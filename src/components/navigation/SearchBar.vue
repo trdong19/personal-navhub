@@ -30,6 +30,13 @@ const suggestions = computed(() => {
 
 const currentEngine = computed(() => settingsStore.currentEngine)
 
+function handleFaviconError(e: Event) {
+  const img = e.target as HTMLImageElement
+  img.style.display = 'none'
+  const fallback = img.nextElementSibling as HTMLElement
+  if (fallback) fallback.style.display = ''
+}
+
 function selectEngine(id: string) {
   settingsStore.setDefaultEngine(id)
   showEnginePicker.value = false
@@ -107,8 +114,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
     <div class="search-bar" :class="{ focused: showSuggestions && suggestions.length > 0 }">
       <div ref="enginePickerRef" class="engine-selector">
         <button class="engine-btn" :title="'切换搜索引擎 (当前: ' + currentEngine.name + ')'" @click="showEnginePicker = !showEnginePicker">
-          <img v-if="getEngineFavicon(currentEngine.urlTemplate)" :key="currentEngine.id" :src="getEngineFavicon(currentEngine.urlTemplate)" class="engine-favicon" @error="($event.target as HTMLImageElement).style.display='none'" />
-          <span v-else class="engine-icon">{{ currentEngine.icon }}</span>
+          <img :key="currentEngine.id" :src="getEngineFavicon(currentEngine.urlTemplate)" class="engine-favicon" @error="handleFaviconError" />
+          <span class="engine-icon" style="display:none">{{ currentEngine.icon }}</span>
         </button>
         <div v-if="showEnginePicker" ref="engineDropdownRef" class="engine-dropdown">
           <button
@@ -117,8 +124,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             :class="['engine-option', { active: engine.id === currentEngine.id }]"
             @click="selectEngine(engine.id)"
           >
-            <img v-if="getEngineFavicon(engine.urlTemplate)" :src="getEngineFavicon(engine.urlTemplate)" class="engine-favicon" @error="($event.target as HTMLImageElement).style.display='none'" />
-            <span v-else class="engine-option-icon">{{ engine.icon }}</span>
+            <img :src="getEngineFavicon(engine.urlTemplate)" class="engine-favicon" @error="handleFaviconError" />
+            <span class="engine-option-icon" style="display:none">{{ engine.icon }}</span>
             <span>{{ engine.name }}</span>
           </button>
         </div>
@@ -160,6 +167,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   max-width: 640px;
   margin: 0 auto;
   position: relative;
+  z-index: 500;
 }
 
 .search-bar {
