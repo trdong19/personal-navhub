@@ -163,46 +163,54 @@ server {
 
 **项目已包含的文件：**
 - `wrangler.toml` — Cloudflare Pages 项目配置
-- `functions/api/[...path].ts` — API 函数（认证、数据同步、资源管理）
+- `functions/api/[[path]].ts` — API 函数（认证、数据同步、资源管理）
 
 #### 方式一：通过 GitHub 仓库部署
 
-1. **Fork 或导入仓库**
+1. **Fork 仓库**
+
+   - 打开 [https://github.com/trdong19/personal-navhub](https://github.com/trdong19/personal-navhub)
+   - 点击右上角 **Fork** 按钮，将仓库 Fork 到自己的 GitHub 账号下
+
+2. **在 Cloudflare 创建 Pages 项目**
 
    - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
    - 进入左侧菜单 **Workers 和 Pages**
-   - 点击 **Create application** → **Pages** → **Connect to Git**
-   - 选择 GitHub，授权后选择本项目仓库 `personal-navhub`
+   - 点击 **创建应用** → **Pages** 标签 → **想要部署 Pages？开始使用**
+   - 选择 **现有的 Git 仓库** → 选择 GitHub 并授权 → 选择 Fork 的 `personal-navhub` 仓库
 
-2. **配置构建设置**
+3. **配置构建设置**
 
    | 配置项 | 值 |
    |--------|-----|
-   | Production branch | `main` |
-   | Build command | `npm run build` |
-   | Build output directory | `dist` |
+   | 构建命令 | `npm run build` |
+   | 输出目录 | `dist` |
 
-3. **创建 KV 命名空间**
+   - 点击 **保存并部署**，等待构建和部署完成
+   - 部署成功后会获得一个 `*.pages.dev` 域名
+
+4. **创建 KV 命名空间**
 
    - 在 Cloudflare Dashboard 左侧菜单进入 **Workers 和 Pages** → **KV**
-   - 点击 **Create a namespace**，名称输入 `NAV_KV`，点击 **Add**
+   - 点击 **创建命名空间**，名称输入 `NAV_KV`，点击 **添加**
    - 记下生成的 KV 命名空间 ID
 
-4. **绑定 KV 到 Pages 项目**
+5. **绑定 KV 到 Pages 项目（重要）**
 
-   - 回到你的 Pages 项目 → **Settings** → **Functions**
-   - 找到 **KV namespace bindings**，点击 **Add binding**
-   - Variable name 填 `NAV_KV`，KV namespace 选择刚创建的 `NAV_KV`
-   - 点击 **Save**
+   - 回到你的 Pages 项目 → **设置** → **Functions**
+   - 找到 **KV 命名空间绑定**，点击 **添加绑定**
+   - 变量名称填 `NAV_KV`，KV 命名空间选择刚创建的 `NAV_KV`
+   - 点击 **保存**
 
-5. **触发部署**
+6. **重新部署使 KV 绑定生效**
 
-   - 进入项目 **Deployments** 页面，点击 **Retry deployment** 重新部署
-   - 部署完成后会获得一个 `*.pages.dev` 域名
+   - 进入项目 **部署** 页面
+   - 点击最新部署旁边的 **⋯** → **重试部署**
+   - 重新部署完成后，API 功能（登录、数据同步）即可正常使用
 
-6. **绑定自定义域名（可选）**
+7. **绑定自定义域名（可选）**
 
-   - 进入项目 **Custom domains** → **Set up a custom domain**
+   - 进入项目 **自定义域** → **设置自定义域**
    - 输入你的域名，按提示添加 DNS 记录即可
 
 #### 方式二：上传 ZIP 包部署
@@ -219,13 +227,13 @@ server {
 2. **上传部署**
 
    - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
-   - 进入 **Workers 和 Pages** → **Create application** → **Pages** → **Upload assets**
-   - 输入项目名称（如 `navhub`），点击 **Create project**
-   - 将本地 `dist/` 文件夹直接拖拽上传，点击 **Deploy site**
+   - 进入 **Workers 和 Pages** → **创建应用** → **Pages** → **上传资产**
+   - 输入项目名称（如 `navhub`），点击 **创建项目**
+   - 将本地 `dist/` 文件夹直接拖拽上传，点击 **部署站点**
 
 3. **创建并绑定 KV**
 
-   - 按方式一的第 3、4 步创建 KV 命名空间并绑定到项目
+   - 按方式一的第 4、5 步创建 KV 命名空间并绑定到项目
    - 绑定后需要重新上传部署才能生效
 
 > **注意**：方式二只上传前端静态文件，API 功能（登录、同步）需要在绑定 KV 后通过 Cloudflare 的自动 Pages Functions 机制加载 `functions/` 目录中的代码。每次更新代码后需重新上传 `dist/` 目录。
