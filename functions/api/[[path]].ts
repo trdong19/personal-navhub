@@ -102,7 +102,7 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     if (!context.env.NAV_KV) {
-      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard 绑定 NAV_KV' }, 500)
+      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard → Pages → 设置 → Functions → KV 命名空间绑定中添加 NAV_KV' }, 500)
     }
     const url = new URL(context.request.url)
     const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
@@ -389,14 +389,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   return json({ error: '未知操作' }, 404)
   } catch (err: any) {
-    return json({ error: '服务器内部错误', detail: err.message }, 500)
+    return json({ error: `服务器内部错误: ${err.message || err}` }, 500)
   }
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   try {
     if (!context.env.NAV_KV) {
-      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard 绑定 NAV_KV' }, 500)
+      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard → Pages → 设置 → Functions → KV 命名空间绑定中添加 NAV_KV' }, 500)
     }
     const url = new URL(context.request.url)
     const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
@@ -421,6 +421,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     return json({ error: 'Not found' }, 404)
   } catch (err: any) {
-    return json({ error: '服务器内部错误', detail: err.message }, 500)
+    return json({ error: `服务器内部错误: ${err.message || err}` }, 500)
   }
 }
