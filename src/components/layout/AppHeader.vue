@@ -222,7 +222,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 
           <div class="auth-modal-header">
             <div class="auth-modal-icon">🍓</div>
-            <h2 class="auth-modal-title">{{ isRegisterMode ? '注册账号' : '登录' }}</h2>
+            <h2 class="auth-modal-title">NavHub</h2>
           </div>
 
           <div class="auth-mode-tabs">

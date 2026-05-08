@@ -62,6 +62,20 @@ async function extractUser(token: string, env: Env): Promise<string | null> {
   }
 }
 
+async function getUserRole(username: string, env: Env): Promise<string> {
+  const raw = await env.NAV_KV.get(`user:${username}`)
+  if (!raw) return 'user'
+  try {
+    return JSON.parse(raw).role || 'user'
+  } catch {
+    return 'user'
+  }
+}
+
+async function isAdmin(username: string, env: Env): Promise<boolean> {
+  return (await getUserRole(username, env)) === 'admin'
+}
+
 async function getUserResources(username: string, env: Env): Promise<Record<string, string> | undefined> {
   const list = await env.NAV_KV.list({ prefix: `res:${username}:` })
   if (list.keys.length === 0) return undefined
@@ -76,13 +90,18 @@ async function getUserResources(username: string, env: Env): Promise<Record<stri
   return Object.keys(result).length > 0 ? result : undefined
 }
 
+async function hasAnyUser(env: Env): Promise<boolean> {
+  const list = await env.NAV_KV.list({ prefix: 'user:', limit: 1 })
+  return list.keys.length > 0
+}
+
 export const onRequestOptions: PagesFunction<Env> = async () => {
   return new Response(null, { status: 204, headers: corsHeaders() })
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
-  const parts = url.pathname.replace('/api/', '').split('/').filter(Boolean)
+  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
   const action = parts[0]
   const env = context.env
 
@@ -106,9 +125,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return json({ error: '用户名已存在' }, 409)
     }
 
+    const isFirst = !(await hasAnyUser(env))
+    const role = isFirst ? 'admin' : 'user'
     const salt = generateSalt()
     const hash = await hashPassword(password, salt)
-    await env.NAV_KV.put(`user:${username}`, JSON.stringify({ hash, salt, createdAt: Date.now() }))
+    await env.NAV_KV.put(`user:${username}`, JSON.stringify({ hash, salt, createdAt: Date.now(), role }))
 
     const initData: SyncData = {
       settings: null, links: [], categories: [], accessRecords: [],
@@ -119,7 +140,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const token = generateToken()
     await env.NAV_KV.put(`token:${token}`, JSON.stringify({ username }), { expirationTtl: 86400 * 30 })
 
-    return json({ success: true, token, username })
+    return json({ success: true, token, username, role })
   }
 
   if (action === 'login') {
@@ -146,7 +167,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const ttl = rememberMe ? 86400 * 30 : 86400
     await env.NAV_KV.put(`token:${token}`, JSON.stringify({ username }), { expirationTtl: ttl })
 
-    return json({ success: true, token, username })
+    return json({ success: true, token, username, role: user.role || 'user' })
   }
 
   if (action === 'sync') {
@@ -231,13 +252,145 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ success: true })
   }
 
+  if (action === 'admin') {
+    const authHeader = context.request.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token) return json({ error: '未登录' }, 401)
+
+    const username = await extractUser(token, env)
+    if (!username || !(await isAdmin(username, env))) {
+      return json({ error: '权限不足' }, 403)
+    }
+
+    const subAction = parts[1]
+
+    if (subAction === 'users') {
+      const list = await env.NAV_KV.list({ prefix: 'user:' })
+      const users = []
+      for (const key of list.keys) {
+        const val = await env.NAV_KV.get(key.name)
+        if (val) {
+          const data = JSON.parse(val)
+          users.push({
+            username: key.name.replace('user:', ''),
+            role: data.role || 'user',
+            createdAt: data.createdAt,
+          })
+        }
+      }
+      return json({ users })
+    }
+
+    if (subAction === 'add-user') {
+      let body: { username: string; password: string }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { username: newUser, password: newPassword } = body
+      if (!newUser || newUser.length < 2 || newUser.length > 20)
+        return json({ error: '用户名需要2-20个字符' }, 400)
+      if (!newPassword || newPassword.length < 4)
+        return json({ error: '密码至少4个字符' }, 400)
+      if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(newUser))
+        return json({ error: '用户名只能包含字母、数字、下划线或中文' }, 400)
+      if (await env.NAV_KV.get(`user:${newUser}`))
+        return json({ error: '用户名已存在' }, 409)
+
+      const salt = generateSalt()
+      const hash = await hashPassword(newPassword, salt)
+      await env.NAV_KV.put(`user:${newUser}`, JSON.stringify({ hash, salt, createdAt: Date.now(), role: 'user' }))
+      await env.NAV_KV.put(`data:${newUser}`, JSON.stringify({
+        settings: null, links: [], categories: [], accessRecords: [],
+        updatedAt: Date.now(), version: 1,
+      }))
+
+      return json({ success: true, username: newUser })
+    }
+
+    if (subAction === 'delete-user') {
+      let body: { username: string }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { username: targetUser } = body
+      if (!targetUser) return json({ error: '缺少用户名' }, 400)
+      if (targetUser === username) return json({ error: '不能删除自己' }, 400)
+      if (!(await env.NAV_KV.get(`user:${targetUser}`))) return json({ error: '用户不存在' }, 404)
+
+      await env.NAV_KV.delete(`user:${targetUser}`)
+      await env.NAV_KV.delete(`data:${targetUser}`)
+
+      const tokenList = await env.NAV_KV.list({ prefix: 'token:' })
+      for (const key of tokenList.keys) {
+        const val = await env.NAV_KV.get(key.name)
+        if (val) {
+          try {
+            const data = JSON.parse(val)
+            if (data.username === targetUser) await env.NAV_KV.delete(key.name)
+          } catch {}
+        }
+      }
+
+      const resList = await env.NAV_KV.list({ prefix: `res:${targetUser}:` })
+      for (const key of resList.keys) {
+        await env.NAV_KV.delete(key.name)
+      }
+
+      return json({ success: true })
+    }
+
+    if (subAction === 'toggle-registration') {
+      const current = await env.NAV_KV.get('system:registration_enabled')
+      const newVal = current !== 'false'
+      await env.NAV_KV.put('system:registration_enabled', newVal ? 'false' : 'true')
+      return json({ success: true, registrationEnabled: !newVal })
+    }
+
+    if (subAction === 'status') {
+      const regRaw = await env.NAV_KV.get('system:registration_enabled')
+      const registrationEnabled = regRaw !== 'false'
+      const userList = await env.NAV_KV.list({ prefix: 'user:' })
+      return json({ registrationEnabled, totalUsers: userList.keys.length })
+    }
+
+    return json({ error: '未知管理操作' }, 404)
+  }
+
+  if (action === 'change-password') {
+    const authHeader = context.request.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token) return json({ error: '未登录' }, 401)
+
+    const username = await extractUser(token, env)
+    if (!username) return json({ error: '登录已过期' }, 401)
+
+    let body: { oldPassword: string; newPassword: string }
+    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+    const { oldPassword, newPassword } = body
+    if (!oldPassword || !newPassword) return json({ error: '请输入旧密码和新密码' }, 400)
+    if (newPassword.length < 4) return json({ error: '新密码至少4个字符' }, 400)
+
+    const raw = await env.NAV_KV.get(`user:${username}`)
+    if (!raw) return json({ error: '用户不存在' }, 404)
+
+    const user = JSON.parse(raw)
+    const hash = await hashPassword(oldPassword, user.salt)
+    if (hash !== user.hash) return json({ error: '旧密码错误' }, 401)
+
+    const newSalt = generateSalt()
+    const newHash = await hashPassword(newPassword, newSalt)
+    await env.NAV_KV.put(`user:${username}`, JSON.stringify({ ...user, hash: newHash, salt: newSalt }))
+
+    return json({ success: true })
+  }
+
   return json({ error: '未知操作' }, 404)
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
-  const parts = url.pathname.replace('/api/', '').split('/').filter(Boolean)
+  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
   const action = parts[0]
+  const env = context.env
 
   if (action === 'health') {
     return json({ status: 'ok', timestamp: Date.now() })
@@ -248,10 +401,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const token = authHeader?.replace('Bearer ', '')
     if (!token) return json({ logged_in: false })
 
-    const username = await extractUser(token, context.env)
+    const username = await extractUser(token, env)
     if (!username) return json({ logged_in: false })
 
-    return json({ logged_in: true, username })
+    const role = await getUserRole(username, env)
+    return json({ logged_in: true, username, role })
   }
 
   return json({ error: 'Not found' }, 404)
