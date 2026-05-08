@@ -327,24 +327,44 @@ async function handleLocalImageUpload(event: Event) {
   reader.readAsDataURL(file)
 }
 
-function moveCategoryUp(index: number) {
-  if (index <= 0) return
-  const sorted = [...navStore.sortedCategories]
-  const ids = sorted.map(c => c.id)
-  const temp = ids[index - 1]
-  ids[index - 1] = ids[index]
-  ids[index] = temp
-  navStore.reorderCategories(ids)
+const draggingCatId = ref<string | null>(null)
+const catDropTargetId = ref<string | null>(null)
+
+function handleCatDragStart(e: DragEvent, catId: string) {
+  draggingCatId.value = catId
+  e.dataTransfer!.effectAllowed = 'move'
+  e.dataTransfer!.setData('text/plain', catId)
 }
 
-function moveCategoryDown(index: number) {
+function handleCatDragOver(e: DragEvent, targetId: string) {
+  if (!draggingCatId.value || draggingCatId.value === targetId) return
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+  catDropTargetId.value = targetId
+}
+
+function handleCatDragLeave(targetId: string) {
+  if (catDropTargetId.value === targetId) catDropTargetId.value = null
+}
+
+function handleCatDrop(e: DragEvent, targetId: string) {
+  e.preventDefault()
+  if (!draggingCatId.value || draggingCatId.value === targetId) return
   const sorted = [...navStore.sortedCategories]
-  if (index >= sorted.length - 1) return
   const ids = sorted.map(c => c.id)
-  const temp = ids[index + 1]
-  ids[index + 1] = ids[index]
-  ids[index] = temp
+  const fromIdx = ids.indexOf(draggingCatId.value)
+  const toIdx = ids.indexOf(targetId)
+  if (fromIdx === -1 || toIdx === -1) return
+  ids.splice(fromIdx, 1)
+  ids.splice(toIdx, 0, draggingCatId.value)
   navStore.reorderCategories(ids)
+  draggingCatId.value = null
+  catDropTargetId.value = null
+}
+
+function handleCatDragEnd() {
+  draggingCatId.value = null
+  catDropTargetId.value = null
 }
 
 function compressImage(dataUrl: string, maxDim: number, quality: number): Promise<string> {
@@ -711,29 +731,29 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </div>
 
           <h4>分类排序</h4>
+          <div class="category-sort-hint">拖拽调整分类顺序</div>
           <div class="category-sort-list">
             <div
-              v-for="(cat, index) in navStore.sortedCategories"
+              v-for="cat in navStore.sortedCategories"
               :key="cat.id"
               class="category-sort-item"
+              :class="{
+                'cat-dragging': draggingCatId === cat.id,
+                'cat-drop-target': catDropTargetId === cat.id
+              }"
+              draggable="true"
+              @dragstart="handleCatDragStart($event, cat.id)"
+              @dragover="handleCatDragOver($event, cat.id)"
+              @dragleave="handleCatDragLeave(cat.id)"
+              @drop="handleCatDrop($event, cat.id)"
+              @dragend="handleCatDragEnd"
             >
+              <span class="category-sort-handle">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+              </span>
               <span class="category-sort-icon">{{ cat.icon }}</span>
               <span class="category-sort-name">{{ cat.name }}</span>
               <span class="category-sort-count">{{ navStore.getTotalLinksByCategory(cat.id) }} 个</span>
-              <div class="category-sort-actions">
-                <button
-                  class="sort-btn"
-                  :disabled="index === 0"
-                  title="上移"
-                  @click="moveCategoryUp(index)"
-                >▲</button>
-                <button
-                  class="sort-btn"
-                  :disabled="index === navStore.sortedCategories.length - 1"
-                  title="下移"
-                  @click="moveCategoryDown(index)"
-                >▼</button>
-              </div>
             </div>
           </div>
         </div>
@@ -1771,6 +1791,12 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   border-top: 1px solid var(--border);
 }
 
+.category-sort-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
 .category-sort-list {
   display: flex;
   flex-direction: column;
@@ -1789,10 +1815,34 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   background: var(--bg);
   border: 1px solid var(--border);
   transition: all var(--transition);
+  cursor: grab;
+  user-select: none;
+}
+
+.category-sort-item:active {
+  cursor: grabbing;
 }
 
 .category-sort-item:hover {
   border-color: var(--primary);
+}
+
+.category-sort-item.cat-dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+
+.category-sort-item.cat-drop-target {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  transform: scale(1.02);
+}
+
+.category-sort-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .category-sort-icon {
@@ -1815,38 +1865,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   font-size: 11px;
   color: var(--text-muted);
   flex-shrink: 0;
-}
-
-.category-sort-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.sort-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.sort-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.sort-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
 }
 </style>
 
