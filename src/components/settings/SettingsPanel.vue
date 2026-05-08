@@ -329,6 +329,7 @@ async function handleLocalImageUpload(event: Event) {
 
 const draggingCatId = ref<string | null>(null)
 const catDropTargetId = ref<string | null>(null)
+const categorySortListRef = ref<HTMLElement | null>(null)
 
 function handleCatDragStart(e: DragEvent, catId: string) {
   draggingCatId.value = catId
@@ -341,6 +342,21 @@ function handleCatDragOver(e: DragEvent, targetId: string) {
   e.preventDefault()
   e.dataTransfer!.dropEffect = 'move'
   catDropTargetId.value = targetId
+}
+
+function handleCatListDragOver(e: DragEvent) {
+  if (!draggingCatId.value) return
+  const container = categorySortListRef.value
+  if (!container) return
+  const rect = container.getBoundingClientRect()
+  const y = e.clientY - rect.top
+  const edgeSize = 40
+  const scrollSpeed = 8
+  if (y < edgeSize) {
+    container.scrollTop -= scrollSpeed
+  } else if (y > rect.height - edgeSize) {
+    container.scrollTop += scrollSpeed
+  }
 }
 
 function handleCatDragLeave(targetId: string) {
@@ -732,7 +748,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
           <h4>分类排序</h4>
           <div class="category-sort-hint">拖拽调整分类顺序</div>
-          <div class="category-sort-list">
+          <div ref="categorySortListRef" class="category-sort-list" @dragover="handleCatListDragOver">
             <div
               v-for="cat in navStore.sortedCategories"
               :key="cat.id"
