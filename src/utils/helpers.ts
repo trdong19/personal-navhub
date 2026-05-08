@@ -49,7 +49,7 @@ export function getFaviconUrl(url: string): string {
   try {
     const { hostname } = new URL(url)
     if (!hostname) return ''
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
+    return `https://icons.duckduckgo.com/ip3/${hostname}.ico`
   } catch {
     return ''
   }
@@ -66,7 +66,7 @@ export function getEngineFavicon(urlTemplate: string): string {
     const sample = urlTemplate.replace('{q}', 'test')
     const { hostname } = new URL(sample)
     if (!hostname) return ''
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
+    return `https://icons.duckduckgo.com/ip3/${hostname}.ico`
   } catch {
     return ''
   }
