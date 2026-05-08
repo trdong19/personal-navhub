@@ -100,10 +100,14 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
-  const url = new URL(context.request.url)
-  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
-  const action = parts[0]
-  const env = context.env
+  try {
+    if (!context.env.NAV_KV) {
+      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard 绑定 NAV_KV' }, 500)
+    }
+    const url = new URL(context.request.url)
+    const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
+    const action = parts[0]
+    const env = context.env
 
   if (action === 'register') {
     let body: { username: string; password: string }
@@ -384,29 +388,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   return json({ error: '未知操作' }, 404)
+  } catch (err: any) {
+    return json({ error: '服务器内部错误', detail: err.message }, 500)
+  }
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const url = new URL(context.request.url)
-  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
-  const action = parts[0]
-  const env = context.env
+  try {
+    if (!context.env.NAV_KV) {
+      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard 绑定 NAV_KV' }, 500)
+    }
+    const url = new URL(context.request.url)
+    const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
+    const action = parts[0]
+    const env = context.env
 
-  if (action === 'health') {
-    return json({ status: 'ok', timestamp: Date.now() })
+    if (action === 'health') {
+      return json({ status: 'ok', timestamp: Date.now() })
+    }
+
+    if (action === 'me') {
+      const authHeader = context.request.headers.get('Authorization')
+      const token = authHeader?.replace('Bearer ', '')
+      if (!token) return json({ logged_in: false })
+
+      const username = await extractUser(token, env)
+      if (!username) return json({ logged_in: false })
+
+      const role = await getUserRole(username, env)
+      return json({ logged_in: true, username, role })
+    }
+
+    return json({ error: 'Not found' }, 404)
+  } catch (err: any) {
+    return json({ error: '服务器内部错误', detail: err.message }, 500)
   }
-
-  if (action === 'me') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ logged_in: false })
-
-    const username = await extractUser(token, env)
-    if (!username) return json({ logged_in: false })
-
-    const role = await getUserRole(username, env)
-    return json({ logged_in: true, username, role })
-  }
-
-  return json({ error: 'Not found' }, 404)
 }

@@ -34,6 +34,14 @@ function getApiBase(): string {
   return '/api'
 }
 
+async function safeJson(res: Response) {
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.includes('json')) {
+    throw new Error(`服务未就绪（HTTP ${res.status}），请检查 Cloudflare KV 是否已绑定`)
+  }
+  return res.json()
+}
+
 /**
  * 构造带认证 token 的请求头
  * @returns 请求头对象，包含 Content-Type 和 Authorization
@@ -94,7 +102,7 @@ export function useAuth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password: p }),
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) throw new Error(data.error || '注册失败')
       setAuth(data.token, data.username)
       authStatus.value = 'success'
@@ -123,7 +131,7 @@ export function useAuth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password: p, rememberMe }),
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok) throw new Error(data.error || '登录失败')
       setAuth(data.token, data.username, data.role)
       authStatus.value = 'success'
@@ -158,7 +166,7 @@ export function useAuth() {
     if (!token.value) return false
     try {
       const res = await fetch(`${getApiBase()}/me`, { headers: headers() })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (data.logged_in) {
         username.value = data.username
         role.value = data.role || 'user'
@@ -261,7 +269,7 @@ export function useAuth() {
         clearAuth()
         return false
       }
-      const result = await res.json()
+      const result = await safeJson(res)
       return res.ok
     } catch {
       return false
@@ -288,7 +296,7 @@ export function useAuth() {
         clearAuth()
         throw new Error('登录已过期，请重新登录')
       }
-      const result = await res.json()
+      const result = await safeJson(res)
       if (!res.ok) throw new Error(result.error || '拉取失败')
       if (!result.data) return false
 
@@ -381,7 +389,7 @@ export function useAuth() {
    */
   async function adminGetUsers(): Promise<any[]> {
     const res = await fetch(`${getApiBase()}/admin/users`, { method: 'POST', headers: headers() })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '获取失败')
     return data.users
   }
@@ -398,7 +406,7 @@ export function useAuth() {
       headers: headers(),
       body: JSON.stringify({ username: u, password: p }),
     })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '添加失败')
     return true
   }
@@ -414,7 +422,7 @@ export function useAuth() {
       headers: headers(),
       body: JSON.stringify({ username: u }),
     })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '删除失败')
     return true
   }
@@ -428,7 +436,7 @@ export function useAuth() {
       method: 'POST',
       headers: headers(),
     })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '操作失败')
     return data
   }
@@ -442,7 +450,7 @@ export function useAuth() {
       method: 'POST',
       headers: headers(),
     })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '获取失败')
     return data
   }
@@ -459,7 +467,7 @@ export function useAuth() {
       headers: headers(),
       body: JSON.stringify({ oldPassword, newPassword }),
     })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '修改失败')
     return true
   }
