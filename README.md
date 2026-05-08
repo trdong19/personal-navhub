@@ -165,55 +165,77 @@ server {
 - `wrangler.toml` — Cloudflare Pages 项目配置
 - `functions/api/[...path].ts` — API 函数（认证、数据同步、资源管理）
 
-**部署步骤：**
+#### 方式一：通过 GitHub 仓库部署
 
-1. **安装 Wrangler CLI**
+1. **Fork 或导入仓库**
 
-```bash
-npm install -g wrangler
-wrangler login
-```
+   - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+   - 进入左侧菜单 **Workers 和 Pages**
+   - 点击 **Create application** → **Pages** → **Connect to Git**
+   - 选择 GitHub，授权后选择本项目仓库 `personal-navhub`
 
-2. **创建 KV 命名空间**
+2. **配置构建设置**
 
-```bash
-wrangler kv namespace create NAV_KV
-wrangler kv namespace create NAV_KV --preview
-```
+   | 配置项 | 值 |
+   |--------|-----|
+   | Production branch | `main` |
+   | Build command | `npm run build` |
+   | Build output directory | `dist` |
 
-执行后会输出类似格式的 ID：
-```
-{ binding = "NAV_KV", id = "xxxxxxxxxx", preview_id = "xxxxxxxxxx" }
-```
+3. **创建 KV 命名空间**
 
-3. **更新 `wrangler.toml` 中的 KV ID**
+   - 在 Cloudflare Dashboard 左侧菜单进入 **Workers 和 Pages** → **KV**
+   - 点击 **Create a namespace**，名称输入 `NAV_KV`，点击 **Add**
+   - 记下生成的 KV 命名空间 ID
 
-将创建的 KV 命名空间 ID 填入配置：
+4. **绑定 KV 到 Pages 项目**
 
-```toml
-[[kv_namespaces]]
-binding = "NAV_KV"
-id = "你的KV命名空间ID"
-preview_id = "你的预览KV命名空间ID"
-```
+   - 回到你的 Pages 项目 → **Settings** → **Functions**
+   - 找到 **KV namespace bindings**，点击 **Add binding**
+   - Variable name 填 `NAV_KV`，KV namespace 选择刚创建的 `NAV_KV`
+   - 点击 **Save**
 
-4. **构建并部署**
+5. **触发部署**
 
-```bash
-npm run build
-wrangler pages deploy dist --project-name navhub
-```
+   - 进入项目 **Deployments** 页面，点击 **Retry deployment** 重新部署
+   - 部署完成后会获得一个 `*.pages.dev` 域名
 
-5. **首次部署后配置**
+6. **绑定自定义域名（可选）**
 
-- 在 Cloudflare Dashboard → Pages → 你的项目 → Settings → Functions 中确认 KV 绑定已生效
-- 绑定自定义域名（可选）：Settings → Custom domains
+   - 进入项目 **Custom domains** → **Set up a custom domain**
+   - 输入你的域名，按提示添加 DNS 记录即可
+
+#### 方式二：上传 ZIP 包部署
+
+如果不使用 GitHub，也可以直接上传构建产物：
+
+1. **本地构建**
+
+   ```bash
+   npm install
+   npm run build
+   ```
+
+2. **上传部署**
+
+   - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+   - 进入 **Workers 和 Pages** → **Create application** → **Pages** → **Upload assets**
+   - 输入项目名称（如 `navhub`），点击 **Create project**
+   - 将本地 `dist/` 文件夹直接拖拽上传，点击 **Deploy site**
+
+3. **创建并绑定 KV**
+
+   - 按方式一的第 3、4 步创建 KV 命名空间并绑定到项目
+   - 绑定后需要重新上传部署才能生效
+
+> **注意**：方式二只上传前端静态文件，API 功能（登录、同步）需要在绑定 KV 后通过 Cloudflare 的自动 Pages Functions 机制加载 `functions/` 目录中的代码。每次更新代码后需重新上传 `dist/` 目录。
 
 **Cloudflare 部署的优势：**
 - 数据持久化在 Cloudflare KV，不依赖本地服务器内存
 - 全球边缘节点加速，访问速度快
 - 自动 HTTPS，无需配置证书
 - 免费额度充足（每天 10 万次 KV 读取，1000 次 KV 写入）
+- GitHub 方式支持自动部署，推送代码即自动发布
 
 ## 使用说明
 
