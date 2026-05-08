@@ -8,6 +8,32 @@
 import { ref, computed } from 'vue'
 import { saveBgImage, getBgImage, blobToDataUrl, getFilesByCategory, getBgImageBlob, saveFile } from '@/utils/fileStore'
 
+const SYNCED_RES_HASH_KEY = 'nav_synced_res_hashes'
+
+function resHash(data: string): string {
+  let h = 0
+  const step = Math.max(1, Math.floor(data.length / 200))
+  for (let i = 0; i < data.length; i += step) {
+    h = ((h << 5) - h + data.charCodeAt(i)) | 0
+  }
+  return `${data.length}_${h}`
+}
+
+function filterNewResources(resources: Record<string, string>): Record<string, string> {
+  const raw = localStorage.getItem(SYNCED_RES_HASH_KEY)
+  const synced: Record<string, string> = raw ? JSON.parse(raw) : {}
+  const result: Record<string, string> = {}
+  for (const [key, val] of Object.entries(resources)) {
+    const hash = resHash(val)
+    if (synced[key] !== hash) {
+      result[key] = val
+      synced[key] = hash
+    }
+  }
+  localStorage.setItem(SYNCED_RES_HASH_KEY, JSON.stringify(synced))
+  return result
+}
+
 // localStorage 中 token 和用户名的存储 key
 const TOKEN_KEY = 'nav_auth_token'
 const USERNAME_KEY = 'nav_auth_username'
@@ -84,6 +110,7 @@ export function useAuth() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USERNAME_KEY)
     localStorage.removeItem('nav_auth_role')
+    localStorage.removeItem(SYNCED_RES_HASH_KEY)
     isLoggedIn.value = false
   }
 
@@ -257,7 +284,10 @@ export function useAuth() {
       }
 
       if (Object.keys(resources).length > 0) {
-        data.resources = resources
+        const newResources = filterNewResources(resources)
+        if (Object.keys(newResources).length > 0) {
+          data.resources = newResources
+        }
       }
 
       const res = await fetch(`${getApiBase()}/sync`, {
