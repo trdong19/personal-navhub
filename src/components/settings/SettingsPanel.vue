@@ -327,6 +327,26 @@ async function handleLocalImageUpload(event: Event) {
   reader.readAsDataURL(file)
 }
 
+function moveCategoryUp(index: number) {
+  if (index <= 0) return
+  const sorted = [...navStore.sortedCategories]
+  const ids = sorted.map(c => c.id)
+  const temp = ids[index - 1]
+  ids[index - 1] = ids[index]
+  ids[index] = temp
+  navStore.reorderCategories(ids)
+}
+
+function moveCategoryDown(index: number) {
+  const sorted = [...navStore.sortedCategories]
+  if (index >= sorted.length - 1) return
+  const ids = sorted.map(c => c.id)
+  const temp = ids[index + 1]
+  ids[index + 1] = ids[index]
+  ids[index] = temp
+  navStore.reorderCategories(ids)
+}
+
 function compressImage(dataUrl: string, maxDim: number, quality: number): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image()
@@ -688,6 +708,33 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
             >
               {{ settingsStore.settings.layout.compactMode ? '开' : '关' }}
             </button>
+          </div>
+
+          <h4>分类排序</h4>
+          <div class="category-sort-list">
+            <div
+              v-for="(cat, index) in navStore.sortedCategories"
+              :key="cat.id"
+              class="category-sort-item"
+            >
+              <span class="category-sort-icon">{{ cat.icon }}</span>
+              <span class="category-sort-name">{{ cat.name }}</span>
+              <span class="category-sort-count">{{ navStore.getTotalLinksByCategory(cat.id) }} 个</span>
+              <div class="category-sort-actions">
+                <button
+                  class="sort-btn"
+                  :disabled="index === 0"
+                  title="上移"
+                  @click="moveCategoryUp(index)"
+                >▲</button>
+                <button
+                  class="sort-btn"
+                  :disabled="index === navStore.sortedCategories.length - 1"
+                  title="下移"
+                  @click="moveCategoryDown(index)"
+                >▼</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1722,6 +1769,84 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   margin-top: 12px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+.category-sort-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.category-sort-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+}
+
+.category-sort-item:hover {
+  border-color: var(--primary);
+}
+
+.category-sort-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.category-sort-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-sort-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.category-sort-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.sort-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.sort-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.sort-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 </style>
 
