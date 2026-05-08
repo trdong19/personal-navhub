@@ -40,34 +40,54 @@ export function formatTime(timestamp: number): string {
 }
 
 /**
- * 从 URL 中提取 favicon 地址
- * 尝试从 URL 的 hostname 获取默认的 /favicon.ico
+ * 从 URL 中提取 favicon 地址列表
+ * 优先使用网站自身的 /favicon.ico，失败后用 DuckDuckGo 兜底
  * @param url - 网站 URL
- * @returns favicon URL 字符串，解析失败返回空字符串
+ * @returns favicon URL 候选数组（按优先级排序）
  */
-export function getFaviconUrl(url: string): string {
+export function getFaviconCandidates(url: string): string[] {
   try {
-    const { hostname } = new URL(url)
-    if (!hostname) return ''
-    return `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+    const { protocol, hostname } = new URL(url)
+    if (!hostname) return []
+    const siteFavicon = `${protocol}//${hostname}/favicon.ico`
+    const ddgFavicon = `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+    return [siteFavicon, ddgFavicon]
   } catch {
-    return ''
+    return []
   }
 }
 
 /**
- * 从搜索引擎 URL 模板中提取 favicon 地址
- * 用 'test' 替换 {q} 占位符后解析 hostname
- * @param urlTemplate - URL 模板（如 'https://www.bing.com/search?q={q}'）
- * @returns favicon URL 字符串，解析失败返回空字符串
+ * 获取第一个可用的 favicon URL（兼容旧调用）
  */
-export function getEngineFavicon(urlTemplate: string): string {
+export function getFaviconUrl(url: string): string {
+  const candidates = getFaviconCandidates(url)
+  return candidates[0] || ''
+}
+
+/**
+ * 从搜索引擎 URL 模板中提取 favicon 地址列表
+ * 优先使用网站自身的 /favicon.ico，失败后用 DuckDuckGo 兜底
+ * @param urlTemplate - URL 模板（如 'https://www.bing.com/search?q={q}'）
+ * @returns favicon URL 候选数组（按优先级排序）
+ */
+export function getEngineFaviconCandidates(urlTemplate: string): string[] {
   try {
     const sample = urlTemplate.replace('{q}', 'test')
-    const { hostname } = new URL(sample)
-    if (!hostname) return ''
-    return `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+    const { protocol, hostname } = new URL(sample)
+    if (!hostname) return []
+    const siteFavicon = `${protocol}//${hostname}/favicon.ico`
+    const ddgFavicon = `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+    return [siteFavicon, ddgFavicon]
   } catch {
-    return ''
+    return []
   }
+}
+
+/**
+ * 获取搜索引擎第一个可用的 favicon URL（兼容旧调用）
+ */
+export function getEngineFavicon(urlTemplate: string): string {
+  const candidates = getEngineFaviconCandidates(urlTemplate)
+  return candidates[0] || ''
 }

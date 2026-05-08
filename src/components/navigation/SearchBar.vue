@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useNavStore } from '@/stores/nav'
-import { getEngineFavicon } from '@/utils/helpers'
+import { getEngineFaviconCandidates } from '@/utils/helpers'
 import { animateDropdown } from '@/composables/useAnimation'
 
 const settingsStore = useSettingsStore()
@@ -30,12 +30,31 @@ const suggestions = computed(() => {
 
 const currentEngine = computed(() => settingsStore.currentEngine)
 
-function handleFaviconError(e: Event) {
-  const img = e.target as HTMLImageElement
-  img.style.display = 'none'
-  const fallback = img.nextElementSibling as HTMLElement
-  if (fallback) fallback.style.display = ''
+const engineIconIndex = ref<Record<string, number>>({})
+
+function getEngineIconSrc(urlTemplate: string, id: string): string {
+  const candidates = getEngineFaviconCandidates(urlTemplate)
+  const idx = engineIconIndex.value[id] || 0
+  return candidates[idx] || ''
 }
+
+function handleEngineFaviconError(e: Event, urlTemplate: string, id: string) {
+  const candidates = getEngineFaviconCandidates(urlTemplate)
+  const currentIdx = engineIconIndex.value[id] || 0
+  const nextIdx = currentIdx + 1
+  if (nextIdx < candidates.length) {
+    engineIconIndex.value = { ...engineIconIndex.value, [id]: nextIdx }
+  } else {
+    const img = e.target as HTMLImageElement
+    img.style.display = 'none'
+    const fallback = img.nextElementSibling as HTMLElement
+    if (fallback) fallback.style.display = ''
+  }
+}
+
+watch(currentEngine, () => {
+  engineIconIndex.value = {}
+})
 
 function selectEngine(id: string) {
   settingsStore.setDefaultEngine(id)
@@ -114,7 +133,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
     <div class="search-bar" :class="{ focused: showSuggestions && suggestions.length > 0 }">
       <div ref="enginePickerRef" class="engine-selector">
         <button class="engine-btn" :title="'切换搜索引擎 (当前: ' + currentEngine.name + ')'" @click="showEnginePicker = !showEnginePicker">
-          <img :key="currentEngine.id" :src="getEngineFavicon(currentEngine.urlTemplate)" class="engine-favicon" @error="handleFaviconError" />
+          <img :key="currentEngine.id + '-' + (engineIconIndex[currentEngine.id] || 0)" :src="getEngineIconSrc(currentEngine.urlTemplate, currentEngine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, currentEngine.urlTemplate, currentEngine.id)" />
           <span class="engine-icon" style="display:none">{{ currentEngine.icon }}</span>
         </button>
         <div v-if="showEnginePicker" ref="engineDropdownRef" class="engine-dropdown">
@@ -124,7 +143,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             :class="['engine-option', { active: engine.id === currentEngine.id }]"
             @click="selectEngine(engine.id)"
           >
-            <img :src="getEngineFavicon(engine.urlTemplate)" class="engine-favicon" @error="handleFaviconError" />
+            <img :key="engine.id + '-' + (engineIconIndex[engine.id] || 0)" :src="getEngineIconSrc(engine.urlTemplate, engine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, engine.urlTemplate, engine.id)" />
             <span class="engine-option-icon" style="display:none">{{ engine.icon }}</span>
             <span>{{ engine.name }}</span>
           </button>

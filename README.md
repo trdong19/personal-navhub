@@ -297,7 +297,7 @@ server {
 
 - **本地部署**（server.mjs）：数据存储在内存中，服务器重启后数据会丢失，生产环境建议替换为数据库
 - **Cloudflare 部署**：数据存储在 Cloudflare KV 中，持久化保存，全球加速
-- Favicon 通过 Google Favicon API 获取，首次访问会自动缓存
+- Favicon 通过 DuckDuckGo 图标服务获取，首次访问会自动缓存
 - 本地部署默认管理员账号 `admin / admin123`，Cloudflare 部署第一个注册用户自动成为管理员
 - 壁纸和背景图存储在浏览器 IndexedDB 中，同步时会自动上传到服务器
 

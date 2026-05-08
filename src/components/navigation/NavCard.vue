@@ -4,7 +4,7 @@ import type { NavLink } from '@/types'
 import { useNetworkStore } from '@/stores/network'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
-import { getFaviconUrl } from '@/utils/helpers'
+import { getFaviconCandidates } from '@/utils/helpers'
 
 const cardRef = ref<HTMLElement | null>(null)
 
@@ -32,19 +32,21 @@ const currentUrl = computed(() => {
   return urls.extranet || urls.intranet || '#'
 })
 
-const remoteFaviconUrl = computed(() => {
-  if (props.link.iconUrl) return props.link.iconUrl
-  return getFaviconUrl(currentUrl.value)
+const faviconCandidates = computed(() => {
+  if (props.link.iconUrl) return [props.link.iconUrl]
+  return getFaviconCandidates(currentUrl.value)
 })
 
+const faviconIndex = ref(0)
 const faviconSrc = computed(() => {
   if (props.link.cachedIconData) return props.link.cachedIconData
-  return remoteFaviconUrl.value
+  return faviconCandidates.value[faviconIndex.value] || ''
 })
 const faviconLoaded = ref(false)
 const faviconFailed = ref(false)
 
-watch(remoteFaviconUrl, () => {
+watch(faviconCandidates, () => {
+  faviconIndex.value = 0
   faviconLoaded.value = false
   faviconFailed.value = false
 })
@@ -52,14 +54,14 @@ watch(remoteFaviconUrl, () => {
 function onFaviconLoad() {
   faviconLoaded.value = true
   faviconFailed.value = false
-  if (!props.link.cachedIconData && !props.link.iconUrl && remoteFaviconUrl.value) {
+  if (!props.link.cachedIconData && !props.link.iconUrl && faviconSrc.value) {
     cacheFaviconAsBase64()
   }
 }
 
 async function cacheFaviconAsBase64() {
   try {
-    const resp = await fetch(remoteFaviconUrl.value)
+    const resp = await fetch(faviconSrc.value)
     if (!resp.ok) return
     const blob = await resp.blob()
     const reader = new FileReader()
@@ -74,8 +76,13 @@ async function cacheFaviconAsBase64() {
 }
 
 function onFaviconError() {
-  faviconFailed.value = true
-  faviconLoaded.value = false
+  const nextIndex = faviconIndex.value + 1
+  if (nextIndex < faviconCandidates.value.length) {
+    faviconIndex.value = nextIndex
+  } else {
+    faviconFailed.value = true
+    faviconLoaded.value = false
+  }
 }
 
 const showPlaceholder = computed(() => {
