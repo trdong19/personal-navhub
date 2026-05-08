@@ -157,6 +157,64 @@ server {
 }
 ```
 
+### Cloudflare Pages 部署（推荐）
+
+本项目内置了 Cloudflare Pages Functions 支持，数据存储在 Cloudflare KV 中，无需自建后端服务器，全球边缘节点加速。
+
+**项目已包含的文件：**
+- `wrangler.toml` — Cloudflare Pages 项目配置
+- `functions/api/[...path].ts` — API 函数（认证、数据同步、资源管理）
+
+**部署步骤：**
+
+1. **安装 Wrangler CLI**
+
+```bash
+npm install -g wrangler
+wrangler login
+```
+
+2. **创建 KV 命名空间**
+
+```bash
+wrangler kv namespace create NAV_KV
+wrangler kv namespace create NAV_KV --preview
+```
+
+执行后会输出类似格式的 ID：
+```
+{ binding = "NAV_KV", id = "xxxxxxxxxx", preview_id = "xxxxxxxxxx" }
+```
+
+3. **更新 `wrangler.toml` 中的 KV ID**
+
+将创建的 KV 命名空间 ID 填入配置：
+
+```toml
+[[kv_namespaces]]
+binding = "NAV_KV"
+id = "你的KV命名空间ID"
+preview_id = "你的预览KV命名空间ID"
+```
+
+4. **构建并部署**
+
+```bash
+npm run build
+wrangler pages deploy dist --project-name navhub
+```
+
+5. **首次部署后配置**
+
+- 在 Cloudflare Dashboard → Pages → 你的项目 → Settings → Functions 中确认 KV 绑定已生效
+- 绑定自定义域名（可选）：Settings → Custom domains
+
+**Cloudflare 部署的优势：**
+- 数据持久化在 Cloudflare KV，不依赖本地服务器内存
+- 全球边缘节点加速，访问速度快
+- 自动 HTTPS，无需配置证书
+- 免费额度充足（每天 10 万次 KV 读取，1000 次 KV 写入）
+
 ## 使用说明
 
 ### 书签管理
