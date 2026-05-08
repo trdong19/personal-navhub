@@ -180,6 +180,15 @@ function handleOutsideClick(e: MouseEvent) {
         </button>
       </div>
 
+      <div class="expand-collapse-group">
+        <button class="float-btn" title="一键展开所有分类" @click="navStore.expandAllCategories()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 6 6 6-6"/><path d="m6 11 6 6 6-6"/></svg>
+        </button>
+        <button class="float-btn" title="一键收回所有分类" @click="navStore.collapseAllCategories()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 13-6-6-6 6"/><path d="m18 21-6-6-6 6"/></svg>
+        </button>
+      </div>
+
       <Transition name="fade">
         <button v-if="showBackTop" class="float-btn" title="回到顶部" @click="scrollToTop">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
@@ -273,6 +282,17 @@ function handleOutsideClick(e: MouseEvent) {
   border-color: var(--primary);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   transform: translateY(-2px);
+}
+
+.expand-collapse-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.expand-collapse-group .float-btn {
+  width: 32px;
+  height: 32px;
 }
 
 .fab-container {

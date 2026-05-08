@@ -208,6 +208,16 @@ export const useNavStore = defineStore('nav', () => {
     }
   }
 
+  function expandAllCategories() {
+    categories.value.forEach(cat => { cat.collapsed = false })
+    saveCategories()
+  }
+
+  function collapseAllCategories() {
+    categories.value.forEach(cat => { cat.collapsed = true })
+    saveCategories()
+  }
+
   /**
    * 添加分类
    * @param name - 分类名称
@@ -417,6 +427,8 @@ export const useNavStore = defineStore('nav', () => {
     recordAccess,
     reorderLinks,
     toggleCategory,
+    expandAllCategories,
+    collapseAllCategories,
     addCategory,
     deleteCategory,
     updateCategory,
