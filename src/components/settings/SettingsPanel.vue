@@ -333,6 +333,7 @@ const categorySortListRef = ref<HTMLElement | null>(null)
 
 function handleCatDragStart(e: DragEvent, catId: string) {
   draggingCatId.value = catId
+  document.body.classList.add('is-dragging')
   e.dataTransfer!.effectAllowed = 'move'
   e.dataTransfer!.setData('text/plain', catId)
 }
@@ -381,6 +382,7 @@ function handleCatDrop(e: DragEvent, targetId: string) {
 function handleCatDragEnd() {
   draggingCatId.value = null
   catDropTargetId.value = null
+  document.body.classList.remove('is-dragging')
 }
 
 function compressImage(dataUrl: string, maxDim: number, quality: number): Promise<string> {

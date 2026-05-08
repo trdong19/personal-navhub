@@ -135,6 +135,7 @@ function handleContextMenu(e: MouseEvent) {
 }
 
 function handleDragStart(e: DragEvent) {
+  document.body.classList.add('is-dragging')
   e.dataTransfer!.effectAllowed = 'move'
   e.dataTransfer!.setData('text/plain', props.link.id)
   if (cardRef.value) {
@@ -159,6 +160,7 @@ function handleDragOver(e: DragEvent) {
 }
 
 function handleDragEnd() {
+  document.body.classList.remove('is-dragging')
   emit('dragend')
 }
 </script>
