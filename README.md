@@ -162,7 +162,6 @@ server {
 本项目内置了 Cloudflare Pages Functions 支持，数据存储在 Cloudflare KV 中，无需自建后端服务器，全球边缘节点加速。
 
 **项目已包含的文件：**
-- `wrangler.toml` — Cloudflare Pages 项目配置
 - `functions/api/[[path]].ts` — API 函数（认证、数据同步、资源管理）
 
 #### 方式一：通过 GitHub 仓库部署
