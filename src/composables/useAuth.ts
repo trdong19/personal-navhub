@@ -8,7 +8,8 @@
 import { ref, computed } from 'vue'
 import { saveBgImage, getBgImage, blobToDataUrl, getFilesByCategory, getBgImageBlob, saveFile } from '@/utils/fileStore'
 
-const SYNCED_RES_HASH_KEY = 'nav_synced_res_hashes'
+const PUSH_RES_HASH_KEY = 'nav_push_res_hashes'
+const PULL_RES_HASH_KEY = 'nav_pull_res_hashes'
 
 function resHash(data: string): string {
   let h = 0
@@ -20,7 +21,7 @@ function resHash(data: string): string {
 }
 
 function filterNewResources(resources: Record<string, string>): Record<string, string> {
-  const raw = localStorage.getItem(SYNCED_RES_HASH_KEY)
+  const raw = localStorage.getItem(PUSH_RES_HASH_KEY)
   const synced: Record<string, string> = raw ? JSON.parse(raw) : {}
   const result: Record<string, string> = {}
   for (const [key, val] of Object.entries(resources)) {
@@ -30,7 +31,7 @@ function filterNewResources(resources: Record<string, string>): Record<string, s
       synced[key] = hash
     }
   }
-  localStorage.setItem(SYNCED_RES_HASH_KEY, JSON.stringify(synced))
+  localStorage.setItem(PUSH_RES_HASH_KEY, JSON.stringify(synced))
   return result
 }
 
@@ -110,7 +111,9 @@ export function useAuth() {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USERNAME_KEY)
     localStorage.removeItem('nav_auth_role')
-    localStorage.removeItem(SYNCED_RES_HASH_KEY)
+    localStorage.removeItem(PUSH_RES_HASH_KEY)
+    localStorage.removeItem(PULL_RES_HASH_KEY)
+    localStorage.removeItem('nav_cached_resources')
     isLoggedIn.value = false
   }
 
@@ -330,7 +333,50 @@ export function useAuth() {
       if (!res.ok) throw new Error(result.error || '拉取失败')
       if (!result.data) return false
 
-      const resources = result.data.resources || {}
+      const resourcesMeta: Record<string, string> = result.data.resourcesMeta || {}
+
+      // 读取本地缓存的资源和哈希
+      const localResRaw = localStorage.getItem('nav_cached_resources')
+      const localRes: Record<string, string> = localResRaw ? JSON.parse(localResRaw) : {}
+      const localMetaRaw = localStorage.getItem(PULL_RES_HASH_KEY)
+      const localMeta: Record<string, string> = localMetaRaw ? JSON.parse(localMetaRaw) : {}
+
+      // 找出需要从服务器下载的资源ID：本地没有的，或哈希不一致的
+      const needFetchIds: string[] = []
+      for (const [resId, serverHash] of Object.entries(resourcesMeta)) {
+        if (localMeta[resId] !== serverHash || !localRes[resId]) {
+          needFetchIds.push(resId)
+        }
+      }
+
+      let fetchedResources: Record<string, string> = {}
+      if (needFetchIds.length > 0) {
+        const batchRes = await fetch(`${getApiBase()}/pull-resources`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({ ids: needFetchIds }),
+        })
+        if (batchRes.ok) {
+          const batchData = await safeJson(batchRes)
+          fetchedResources = batchData.resources || {}
+        }
+      }
+
+      // 合并：本地缓存 + 新拉取的
+      const resources: Record<string, string> = {}
+      for (const resId of Object.keys(resourcesMeta)) {
+        resources[resId] = fetchedResources[resId] || localRes[resId] || ''
+      }
+
+      // 更新本地资源缓存和哈希
+      const newLocalRes: Record<string, string> = {}
+      for (const resId of Object.keys(resourcesMeta)) {
+        if (resources[resId]) {
+          newLocalRes[resId] = resources[resId]
+        }
+      }
+      localStorage.setItem('nav_cached_resources', JSON.stringify(newLocalRes))
+      localStorage.setItem(PULL_RES_HASH_KEY, JSON.stringify(resourcesMeta))
 
       // 将书签中的 res:// 引用还原为实际的 dataUrl
       if (result.data.links) {
@@ -368,12 +414,11 @@ export function useAuth() {
         localStorage.setItem('nav_accessRecords', JSON.stringify(result.data.accessRecords))
       }
 
-      // 保存背景图到 IndexedDB（dataUrl → Blob → IndexedDB）
+      // 保存背景图到 IndexedDB
       if (resources['bg']) {
         try {
           await saveBgImage(resources['bg'])
         } catch {
-          // IndexedDB 失败时回退到 localStorage
           try { localStorage.setItem('nav_local_bg_image', resources['bg']) } catch {}
         }
       }

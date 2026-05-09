@@ -14,6 +14,10 @@ export type ThemeMode = 'light' | 'dark' | 'auto'
 
 /** 卡片尺寸 */
 export type CardSize = 'small' | 'medium' | 'large'
+export type CategoryLayout = 'single' | 'double'
+
+/** 工具栏按钮 ID */
+export type ToolbarButtonId = 'theme' | 'network' | 'add' | 'expand' | 'filter' | 'backTop' | 'user'
 
 // ==================== 书签相关 ====================
 
@@ -51,6 +55,8 @@ export interface NavLink {
   pinned: boolean
   /** 排序序号 */
   order: number
+  /** 置顶区域排序序号（仅置顶时有意义） */
+  pinnedOrder: number
   /** 创建时间戳 */
   createdAt: number
   /** 自定义卡片颜色（hex） */
@@ -59,8 +65,12 @@ export interface NavLink {
   opacity?: number
   /** 自定义字体颜色（hex） */
   fontColor?: string
+  /** 自定义字体颜色透明度 0-1 */
+  fontOpacity?: number
   /** 自动缓存的网站图标 Data URL（base64，跨设备可用） */
   cachedIconData?: string
+  /** favicon 获取是否已失败（避免重复请求） */
+  faviconFetchFailed?: boolean
 }
 
 // ==================== 分类相关 ====================
@@ -117,6 +127,8 @@ export interface ThemeSettings {
   cardOpacity?: number
   /** 自定义字体颜色（hex） */
   textColor?: string
+  /** 字体颜色透明度 0-1 */
+  textOpacity?: number
 }
 
 // ==================== 布局设置相关 ====================
@@ -131,6 +143,18 @@ export interface LayoutSettings {
   showDescription: boolean
   /** 紧凑模式开关 */
   compactMode: boolean
+  /** 工具栏按钮配置（顺序和可见性） */
+  toolbar: ToolbarButtonConfig[]
+  /** 分类布局模式 */
+  categoryLayout: CategoryLayout
+}
+
+/** 工具栏按钮配置 */
+export interface ToolbarButtonConfig {
+  /** 按钮 ID */
+  id: ToolbarButtonId
+  /** 是否可见 */
+  visible: boolean
 }
 
 // ==================== 搜索引擎相关 ====================

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import NavCard from './NavCard.vue'
 import { useCardEntrance } from '@/composables/useAnimation'
+import { useFlipSort } from '@/composables/useFlipSort'
 
 const emit = defineEmits<{
   'open-editor': [id: string]
@@ -12,10 +13,12 @@ const navStore = useNavStore()
 const draggingId = ref<string | null>(null)
 const gridRef = ref<HTMLElement | null>(null)
 
-useCardEntrance(gridRef)
+const entrance = useCardEntrance(gridRef)
+const { recordPositions, animateFlip } = useFlipSort(gridRef)
 
 function handleDragStart(id: string) {
   draggingId.value = id
+  entrance.pause()
 }
 
 function handleDragOver(targetId: string) {
@@ -24,13 +27,16 @@ function handleDragOver(targetId: string) {
   const fromIdx = ids.indexOf(draggingId.value)
   const toIdx = ids.indexOf(targetId)
   if (fromIdx === -1 || toIdx === -1) return
+  const before = recordPositions(draggingId.value)
   ids.splice(fromIdx, 1)
   ids.splice(toIdx, 0, draggingId.value)
-  navStore.reorderLinks(ids)
+  navStore.reorderPinnedLinks(ids)
+  animateFlip(before, draggingId.value)
 }
 
 function handleDragEnd() {
   draggingId.value = null
+  entrance.resume()
 }
 
 const ctxMenu = ref<{ x: number; y: number; visible: boolean; linkId: string }>({ x: 0, y: 0, visible: false, linkId: '' })

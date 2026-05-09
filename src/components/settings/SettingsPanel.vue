@@ -4,6 +4,7 @@ import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuth } from '@/composables/useAuth'
 import FileManager from './FileManager.vue'
+import type { ToolbarButtonId } from '@/types'
 
 const emit = defineEmits<{
   close: []
@@ -52,6 +53,54 @@ async function handleChangePassword() {
 
 const showFileManager = ref(false)
 
+const showCatSortModal = ref(false)
+
+const toolbarDragId = ref<ToolbarButtonId | null>(null)
+const toolbarDropTarget = ref<ToolbarButtonId | null>(null)
+
+const toolbarLabelMap: Record<ToolbarButtonId, string> = {
+  theme: '主题切换',
+  network: '网络切换',
+  add: '添加按钮',
+  expand: '展开/收起',
+  filter: '筛选',
+  backTop: '回到顶部',
+  user: '用户菜单',
+}
+
+function handleToolbarDragStart(e: DragEvent, id: ToolbarButtonId) {
+  toolbarDragId.value = id
+  e.dataTransfer!.effectAllowed = 'move'
+  e.dataTransfer!.setData('text/plain', id)
+}
+
+function handleToolbarDragOver(e: DragEvent, targetId: ToolbarButtonId) {
+  if (!toolbarDragId.value || toolbarDragId.value === targetId) return
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+  toolbarDropTarget.value = targetId
+}
+
+function handleToolbarDrop(e: DragEvent, targetId: ToolbarButtonId) {
+  e.preventDefault()
+  if (!toolbarDragId.value || toolbarDragId.value === targetId) return
+  const toolbar = settingsStore.getToolbar()
+  const ids = toolbar.map(b => b.id)
+  const fromIdx = ids.indexOf(toolbarDragId.value)
+  const toIdx = ids.indexOf(targetId)
+  if (fromIdx === -1 || toIdx === -1) return
+  ids.splice(fromIdx, 1)
+  ids.splice(toIdx, 0, toolbarDragId.value)
+  settingsStore.reorderToolbar(ids)
+  toolbarDragId.value = null
+  toolbarDropTarget.value = null
+}
+
+function handleToolbarDragEnd() {
+  toolbarDragId.value = null
+  toolbarDropTarget.value = null
+}
+
 onMounted(() => {
   document.body.style.overflow = 'hidden'
   document.documentElement.style.overflow = 'hidden'
@@ -87,6 +136,7 @@ const showCustomBgInput = ref(false)
 const showCustomTextColorInput = ref(false)
 const showCustomSearchColor = ref(false)
 const showCustomCardColor = ref(false)
+const showColorStyles = ref(false)
 
 const textColors = [
   '#0f172a', '#1e293b', '#334155', '#475569',
@@ -351,12 +401,17 @@ function handleCatListDragOver(e: DragEvent) {
   if (!container) return
   const rect = container.getBoundingClientRect()
   const y = e.clientY - rect.top
-  const edgeSize = 40
-  const scrollSpeed = 8
+  const edgeSize = 60
+  const maxSpeed = 30
+  const minSpeed = 3
   if (y < edgeSize) {
-    container.scrollTop -= scrollSpeed
+    const ratio = 1 - Math.max(0, y) / edgeSize
+    const speed = minSpeed + (maxSpeed - minSpeed) * ratio * ratio
+    container.scrollTop -= speed
   } else if (y > rect.height - edgeSize) {
-    container.scrollTop += scrollSpeed
+    const ratio = 1 - Math.max(0, (rect.height - y)) / edgeSize
+    const speed = minSpeed + (maxSpeed - minSpeed) * ratio * ratio
+    container.scrollTop += speed
   }
 }
 
@@ -452,7 +507,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
             />
           </div>
 
-          <h4>主题模式</h4>
+          <h4>外观风格</h4>
           <div class="theme-modes">
             <button
               v-for="mode in ['light', 'dark', 'auto']"
@@ -464,79 +519,95 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               {{ mode === 'light' ? '亮色' : mode === 'dark' ? '暗色' : '自动' }}
             </button>
           </div>
-
-          <h4>主题色</h4>
-          <div class="color-picker">
-            <button
-              v-for="color in themeColors"
-              :key="color"
-              :class="['color-btn', { active: settingsStore.settings.theme.primaryColor === color }]"
-              :style="{ background: color }"
-              @click="settingsStore.setPrimaryColor(color)"
-            />
-            <button
-              :class="['color-btn color-btn-custom', { active: showCustomColorInput }]"
-              @click="showCustomColorInput = !showCustomColorInput"
-            >
-              +
-            </button>
+          <div class="setting-group">
+            <label class="group-label">主题色</label>
+            <div class="color-picker">
+              <button
+                v-for="color in themeColors"
+                :key="color"
+                :class="['color-btn', { active: settingsStore.settings.theme.primaryColor === color }]"
+                :style="{ background: color }"
+                @click="settingsStore.setPrimaryColor(color)"
+              />
+              <button
+                :class="['color-btn color-btn-custom', { active: showCustomColorInput }]"
+                @click="showCustomColorInput = !showCustomColorInput"
+              >
+                +
+              </button>
+            </div>
+            <div v-if="showCustomColorInput" class="custom-color-row">
+              <input
+                type="color"
+                :value="settingsStore.settings.theme.primaryColor"
+                @input="settingsStore.setPrimaryColor(($event.target as HTMLInputElement).value)"
+                class="color-input-native"
+              />
+              <input
+                type="text"
+                class="color-text-input"
+                :value="settingsStore.settings.theme.primaryColor"
+                @input="settingsStore.setPrimaryColor(($event.target as HTMLInputElement).value)"
+                placeholder="#6366f1"
+              />
+            </div>
           </div>
-          <div v-if="showCustomColorInput" class="custom-color-row">
+          <div class="slider-row">
+            <span>圆角大小</span>
             <input
-              type="color"
-              :value="settingsStore.settings.theme.primaryColor"
-              @input="settingsStore.setPrimaryColor(($event.target as HTMLInputElement).value)"
-              class="color-input-native"
+              type="range"
+              min="0"
+              max="24"
+              step="2"
+              :value="settingsStore.settings.theme.borderRadius"
+              @input="settingsStore.setBorderRadius(Number(($event.target as HTMLInputElement).value))"
+              class="range-slider"
             />
-            <input
-              type="text"
-              class="color-text-input"
-              :value="settingsStore.settings.theme.primaryColor"
-              @input="settingsStore.setPrimaryColor(($event.target as HTMLInputElement).value)"
-              placeholder="#6366f1"
-            />
-          </div>
-
-          <h4>纯色背景</h4>
-          <div class="color-picker">
-            <button
-              :class="['color-btn', { active: !settingsStore.settings.theme.backgroundColor }]"
-              :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-              title="跟随主题"
-              @click="settingsStore.setBackgroundColor('')"
-            />
-            <button
-              v-for="color in bgColors"
-              :key="color"
-              :class="['color-btn', { active: settingsStore.settings.theme.backgroundColor === color }]"
-              :style="{ background: color }"
-              @click="settingsStore.setBackgroundColor(color)"
-            />
-            <button
-              :class="['color-btn color-btn-custom', { active: showCustomBgInput }]"
-              @click="showCustomBgInput = !showCustomBgInput"
-            >
-              +
-            </button>
-          </div>
-          <div v-if="showCustomBgInput" class="custom-color-row">
-            <input
-              type="color"
-              :value="settingsStore.settings.theme.backgroundColor || '#f8fafc'"
-              @input="settingsStore.setBackgroundColor(($event.target as HTMLInputElement).value)"
-              class="color-input-native"
-            />
-            <input
-              type="text"
-              class="color-text-input"
-              :value="settingsStore.settings.theme.backgroundColor"
-              @input="settingsStore.setBackgroundColor(($event.target as HTMLInputElement).value)"
-              placeholder="输入颜色值..."
-            />
+            <span class="slider-val">{{ settingsStore.settings.theme.borderRadius }}px</span>
           </div>
 
-          <h4>自定义背景图</h4>
-          <div class="bg-section">
+          <h4>背景设置</h4>
+          <div class="setting-group">
+            <label class="group-label">纯色背景</label>
+            <div class="color-picker">
+              <button
+                :class="['color-btn', { active: !settingsStore.settings.theme.backgroundColor }]"
+                :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
+                title="跟随主题"
+                @click="settingsStore.setBackgroundColor('')"
+              />
+              <button
+                v-for="color in bgColors"
+                :key="color"
+                :class="['color-btn', { active: settingsStore.settings.theme.backgroundColor === color }]"
+                :style="{ background: color }"
+                @click="settingsStore.setBackgroundColor(color)"
+              />
+              <button
+                :class="['color-btn color-btn-custom', { active: showCustomBgInput }]"
+                @click="showCustomBgInput = !showCustomBgInput"
+              >
+                +
+              </button>
+            </div>
+            <div v-if="showCustomBgInput" class="custom-color-row">
+              <input
+                type="color"
+                :value="settingsStore.settings.theme.backgroundColor || '#f8fafc'"
+                @input="settingsStore.setBackgroundColor(($event.target as HTMLInputElement).value)"
+                class="color-input-native"
+              />
+              <input
+                type="text"
+                class="color-text-input"
+                :value="settingsStore.settings.theme.backgroundColor"
+                @input="settingsStore.setBackgroundColor(($event.target as HTMLInputElement).value)"
+                placeholder="输入颜色值..."
+              />
+            </div>
+          </div>
+          <div class="setting-group">
+            <label class="group-label">自定义背景图</label>
             <div class="bg-input-row">
               <input
                 type="text"
@@ -558,8 +629,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 ✕
               </button>
             </div>
-            <div class="bg-hint">输入图片 URL 或上传本地图片作为背景</div>
-            <div v-if="effectiveBgImage" class="slider-row">
+          </div>
+          <div v-if="effectiveBgImage" class="setting-group">
+            <div class="slider-row">
               <span>模糊强度</span>
               <input
                 type="range"
@@ -572,7 +644,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               />
               <span class="slider-val">{{ settingsStore.settings.theme.bgBlur ?? 0 }}px</span>
             </div>
-            <div v-if="effectiveBgImage" class="toggle-row">
+            <div class="toggle-row">
               <span>毛玻璃效果</span>
               <button
                 :class="['toggle', { active: settingsStore.settings.theme.glassEffect }]"
@@ -581,7 +653,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 {{ settingsStore.settings.theme.glassEffect ? '开' : '关' }}
               </button>
             </div>
-            <div v-if="effectiveBgImage" class="slider-row">
+            <div class="slider-row">
               <span>白膜透明度</span>
               <input
                 type="range"
@@ -596,123 +668,150 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
             </div>
           </div>
 
-          <h4>搜索框样式</h4>
-          <div class="color-picker">
-            <button
-              :class="['color-btn', { active: !settingsStore.settings.theme.searchColor }]"
-              :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-              title="跟随主题"
-              @click="settingsStore.setSearchColor('')"
-            />
-            <button
-              v-for="color in themeColors"
-              :key="'sc-' + color"
-              :class="['color-btn', { active: settingsStore.settings.theme.searchColor === color }]"
-              :style="{ background: color }"
-              @click="settingsStore.setSearchColor(color)"
-            />
-            <button
-              :class="['color-btn color-btn-custom', { active: showCustomSearchColor }]"
-              @click="showCustomSearchColor = !showCustomSearchColor"
-            >
-              +
-            </button>
-          </div>
-          <div v-if="showCustomSearchColor" class="custom-color-row">
-            <input type="color" :value="settingsStore.settings.theme.searchColor || '#ffffff'" @input="settingsStore.setSearchColor(($event.target as HTMLInputElement).value)" class="color-input-native" />
-            <input type="text" class="color-text-input" :value="settingsStore.settings.theme.searchColor" @input="settingsStore.setSearchColor(($event.target as HTMLInputElement).value)" placeholder="#ffffff" />
-          </div>
-          <div class="slider-row">
-            <span>搜索框透明度</span>
-            <input
-              type="range"
-              min="0.1"
-              max="1"
-              step="0.05"
-              :value="settingsStore.settings.theme.searchOpacity ?? 1"
-              @input="settingsStore.setSearchOpacity(Number(($event.target as HTMLInputElement).value))"
-              class="range-slider"
-            />
-            <span class="slider-val">{{ Math.round((settingsStore.settings.theme.searchOpacity ?? 1) * 100) }}%</span>
-          </div>
+          <h4 class="collapsible-header" @click="showColorStyles = !showColorStyles">
+            <span>自定义颜色</span>
+            <svg :class="['collapse-arrow', { collapsed: !showColorStyles }]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </h4>
+          <Transition name="collapse">
+            <div v-if="showColorStyles" class="color-styles-panel">
+              <div class="setting-group">
+                <label class="group-label">搜索框颜色</label>
+                <div class="color-picker">
+                  <button
+                    :class="['color-btn', { active: !settingsStore.settings.theme.searchColor }]"
+                    :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
+                    title="跟随主题"
+                    @click="settingsStore.setSearchColor('')"
+                  />
+                  <button
+                    v-for="color in themeColors"
+                    :key="'sc-' + color"
+                    :class="['color-btn', { active: settingsStore.settings.theme.searchColor === color }]"
+                    :style="{ background: color }"
+                    @click="settingsStore.setSearchColor(color)"
+                  />
+                  <button
+                    :class="['color-btn color-btn-custom', { active: showCustomSearchColor }]"
+                    @click="showCustomSearchColor = !showCustomSearchColor"
+                  >
+                    +
+                  </button>
+                </div>
+                <div v-if="showCustomSearchColor" class="custom-color-row">
+                  <input type="color" :value="settingsStore.settings.theme.searchColor || '#ffffff'" @input="settingsStore.setSearchColor(($event.target as HTMLInputElement).value)" class="color-input-native" />
+                  <input type="text" class="color-text-input" :value="settingsStore.settings.theme.searchColor" @input="settingsStore.setSearchColor(($event.target as HTMLInputElement).value)" placeholder="#ffffff" />
+                </div>
+                <div class="slider-row">
+                  <span>透明度</span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    :value="settingsStore.settings.theme.searchOpacity ?? 1"
+                    @input="settingsStore.setSearchOpacity(Number(($event.target as HTMLInputElement).value))"
+                    class="range-slider"
+                  />
+                  <span class="slider-val">{{ Math.round((settingsStore.settings.theme.searchOpacity ?? 1) * 100) }}%</span>
+                </div>
+              </div>
 
-          <h4>书签卡片样式</h4>
-          <div class="color-picker">
-            <button
-              :class="['color-btn', { active: !settingsStore.settings.theme.cardColor }]"
-              :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-              title="跟随主题"
-              @click="settingsStore.setCardColor('')"
-            />
-            <button
-              v-for="color in themeColors"
-              :key="'cc-' + color"
-              :class="['color-btn', { active: settingsStore.settings.theme.cardColor === color }]"
-              :style="{ background: color }"
-              @click="settingsStore.setCardColor(color)"
-            />
-            <button
-              :class="['color-btn color-btn-custom', { active: showCustomCardColor }]"
-              @click="showCustomCardColor = !showCustomCardColor"
-            >
-              +
-            </button>
-          </div>
-          <div v-if="showCustomCardColor" class="custom-color-row">
-            <input type="color" :value="settingsStore.settings.theme.cardColor || '#ffffff'" @input="settingsStore.setCardColor(($event.target as HTMLInputElement).value)" class="color-input-native" />
-            <input type="text" class="color-text-input" :value="settingsStore.settings.theme.cardColor" @input="settingsStore.setCardColor(($event.target as HTMLInputElement).value)" placeholder="#ffffff" />
-          </div>
-          <div class="slider-row">
-            <span>卡片透明度</span>
-            <input
-              type="range"
-              min="0.1"
-              max="1"
-              step="0.05"
-              :value="settingsStore.settings.theme.cardOpacity ?? 1"
-              @input="settingsStore.setCardOpacity(Number(($event.target as HTMLInputElement).value))"
-              class="range-slider"
-            />
-            <span class="slider-val">{{ Math.round((settingsStore.settings.theme.cardOpacity ?? 1) * 100) }}%</span>
-          </div>
+              <div class="setting-group">
+                <label class="group-label">书签卡片颜色</label>
+                <div class="color-picker">
+                  <button
+                    :class="['color-btn', { active: !settingsStore.settings.theme.cardColor }]"
+                    :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
+                    title="跟随主题"
+                    @click="settingsStore.setCardColor('')"
+                  />
+                  <button
+                    v-for="color in themeColors"
+                    :key="'cc-' + color"
+                    :class="['color-btn', { active: settingsStore.settings.theme.cardColor === color }]"
+                    :style="{ background: color }"
+                    @click="settingsStore.setCardColor(color)"
+                  />
+                  <button
+                    :class="['color-btn color-btn-custom', { active: showCustomCardColor }]"
+                    @click="showCustomCardColor = !showCustomCardColor"
+                  >
+                    +
+                  </button>
+                </div>
+                <div v-if="showCustomCardColor" class="custom-color-row">
+                  <input type="color" :value="settingsStore.settings.theme.cardColor || '#ffffff'" @input="settingsStore.setCardColor(($event.target as HTMLInputElement).value)" class="color-input-native" />
+                  <input type="text" class="color-text-input" :value="settingsStore.settings.theme.cardColor" @input="settingsStore.setCardColor(($event.target as HTMLInputElement).value)" placeholder="#ffffff" />
+                </div>
+                <div class="slider-row">
+                  <span>透明度</span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    :value="settingsStore.settings.theme.cardOpacity ?? 1"
+                    @input="settingsStore.setCardOpacity(Number(($event.target as HTMLInputElement).value))"
+                    class="range-slider"
+                  />
+                  <span class="slider-val">{{ Math.round((settingsStore.settings.theme.cardOpacity ?? 1) * 100) }}%</span>
+                </div>
+              </div>
 
-          <h4>字体颜色</h4>
-          <div class="color-picker">
-            <button
-              :class="['color-btn', { active: !settingsStore.settings.theme.textColor }]"
-              :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-              title="跟随主题"
-              @click="settingsStore.setTextColor('')"
-            />
-            <button
-              v-for="color in textColors"
-              :key="'tc-' + color"
-              :class="['color-btn', { active: settingsStore.settings.theme.textColor === color }]"
-              :style="{ background: color }"
-              @click="settingsStore.setTextColor(color)"
-            />
-            <button
-              :class="['color-btn color-btn-custom', { active: showCustomTextColorInput }]"
-              @click="showCustomTextColorInput = !showCustomTextColorInput"
-            >
-              +
-            </button>
-          </div>
-          <div v-if="showCustomTextColorInput" class="custom-color-row">
-            <input
-              type="color"
-              :value="settingsStore.settings.theme.textColor || '#0f172a'"
-              @input="settingsStore.setTextColor(($event.target as HTMLInputElement).value)"
-              class="color-input-native"
-            />
-            <input
-              type="text"
-              class="color-text-input"
-              :value="settingsStore.settings.theme.textColor"
-              @input="settingsStore.setTextColor(($event.target as HTMLInputElement).value)"
-              placeholder="#0f172a"
-            />
-          </div>
+              <div class="setting-group">
+                <label class="group-label">全局字体颜色</label>
+                <div class="color-picker">
+                  <button
+                    :class="['color-btn', { active: !settingsStore.settings.theme.textColor }]"
+                    :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
+                    title="跟随主题"
+                    @click="settingsStore.setTextColor('')"
+                  />
+                  <button
+                    v-for="color in textColors"
+                    :key="'tc-' + color"
+                    :class="['color-btn', { active: settingsStore.settings.theme.textColor === color }]"
+                    :style="{ background: color }"
+                    @click="settingsStore.setTextColor(color)"
+                  />
+                  <button
+                    :class="['color-btn color-btn-custom', { active: showCustomTextColorInput }]"
+                    @click="showCustomTextColorInput = !showCustomTextColorInput"
+                  >
+                    +
+                  </button>
+                </div>
+                <div v-if="showCustomTextColorInput" class="custom-color-row">
+                  <input
+                    type="color"
+                    :value="settingsStore.settings.theme.textColor || '#0f172a'"
+                    @input="settingsStore.setTextColor(($event.target as HTMLInputElement).value)"
+                    class="color-input-native"
+                  />
+                  <input
+                    type="text"
+                    class="color-text-input"
+                    :value="settingsStore.settings.theme.textColor"
+                    @input="settingsStore.setTextColor(($event.target as HTMLInputElement).value)"
+                    placeholder="#0f172a"
+                  />
+                </div>
+                <div class="slider-row">
+                  <span>透明度</span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    :value="settingsStore.settings.theme.textOpacity ?? 1"
+                    @input="settingsStore.setTextOpacity(Number(($event.target as HTMLInputElement).value))"
+                    class="range-slider"
+                  />
+                  <span class="slider-val">{{ Math.round((settingsStore.settings.theme.textOpacity ?? 1) * 100) }}%</span>
+                </div>
+              </div>
+            </div>
+          </Transition>
         </div>
 
         <div v-show="activeTab === 'layout'" class="settings-section">
@@ -725,6 +824,24 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               @click="settingsStore.setCardSize(size as any)"
             >
               {{ size === 'small' ? '小' : size === 'medium' ? '中' : '大' }}
+            </button>
+          </div>
+
+          <h4>分类布局</h4>
+          <div class="layout-modes">
+            <button
+              :class="['mode-btn', { active: settingsStore.settings.layout.categoryLayout === 'single' }]"
+              @click="settingsStore.setCategoryLayout('single')"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="4" rx="1"/><rect x="4" y="10" width="16" height="4" rx="1"/><rect x="4" y="16" width="16" height="4" rx="1"/></svg>
+              单列
+            </button>
+            <button
+              :class="['mode-btn', { active: settingsStore.settings.layout.categoryLayout === 'double' }]"
+              @click="settingsStore.setCategoryLayout('double')"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="8" height="4" rx="1"/><rect x="13" y="4" width="8" height="4" rx="1"/><rect x="3" y="10" width="8" height="4" rx="1"/><rect x="13" y="10" width="8" height="4" rx="1"/><rect x="3" y="16" width="8" height="4" rx="1"/><rect x="13" y="16" width="8" height="4" rx="1"/></svg>
+              双列
             </button>
           </div>
 
@@ -748,32 +865,38 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
             </button>
           </div>
 
-          <h4>分类排序</h4>
-          <div class="category-sort-hint">拖拽调整分类顺序</div>
-          <div ref="categorySortListRef" class="category-sort-list" @dragover="handleCatListDragOver">
+          <h4>工具栏按钮管理</h4>
+          <div class="toolbar-hint">拖拽调整按钮顺序，点击切换显示/隐藏。设置按钮始终显示。</div>
+          <div class="toolbar-manage-list">
             <div
-              v-for="cat in navStore.sortedCategories"
-              :key="cat.id"
-              class="category-sort-item"
+              v-for="btn in settingsStore.getToolbar()"
+              :key="btn.id"
+              class="toolbar-manage-item"
               :class="{
-                'cat-dragging': draggingCatId === cat.id,
-                'cat-drop-target': catDropTargetId === cat.id
+                'toolbar-dragging': toolbarDragId === btn.id,
+                'toolbar-drop-target': toolbarDropTarget === btn.id,
+                'toolbar-hidden': !btn.visible
               }"
               draggable="true"
-              @dragstart="handleCatDragStart($event, cat.id)"
-              @dragover="handleCatDragOver($event, cat.id)"
-              @dragleave="handleCatDragLeave(cat.id)"
-              @drop="handleCatDrop($event, cat.id)"
-              @dragend="handleCatDragEnd"
+              @dragstart="handleToolbarDragStart($event, btn.id)"
+              @dragover="handleToolbarDragOver($event, btn.id)"
+              @drop="handleToolbarDrop($event, btn.id)"
+              @dragend="handleToolbarDragEnd"
             >
-              <span class="category-sort-handle">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+              <span class="toolbar-manage-handle">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
               </span>
-              <span class="category-sort-icon">{{ cat.icon }}</span>
-              <span class="category-sort-name">{{ cat.name }}</span>
-              <span class="category-sort-count">{{ navStore.getTotalLinksByCategory(cat.id) }} 个</span>
+              <span class="toolbar-manage-name">{{ toolbarLabelMap[btn.id] }}</span>
+              <button class="toolbar-toggle" @click="settingsStore.toggleToolbarButton(btn.id)">
+                {{ btn.visible ? '👁' : '🚫' }}
+              </button>
             </div>
           </div>
+
+          <h4>分类排序</h4>
+          <button class="btn btn-secondary" @click="showCatSortModal = true">
+            🔄 调整分类顺序
+          </button>
         </div>
 
         <div v-show="activeTab === 'search'" class="settings-section">
@@ -906,6 +1029,46 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
       </div>
 
       <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showCatSortModal" class="cat-sort-overlay" @click.self="showCatSortModal = false">
+            <Transition name="modal-pop" appear>
+              <div v-if="showCatSortModal" class="cat-sort-modal">
+                <div class="cat-sort-header">
+                  <h3>分类排序</h3>
+                  <button class="close-btn" @click="showCatSortModal = false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  </button>
+                </div>
+                <div class="category-sort-hint">拖拽调整分类顺序，拖拽靠近边缘可加速滚动</div>
+                <div ref="categorySortListRef" class="category-sort-list cat-sort-body" @dragover="handleCatListDragOver">
+                  <div
+                    v-for="cat in navStore.sortedCategories"
+                    :key="cat.id"
+                    class="category-sort-item"
+                    :class="{
+                      'cat-dragging': draggingCatId === cat.id,
+                      'cat-drop-target': catDropTargetId === cat.id
+                    }"
+                    draggable="true"
+                    @dragstart="handleCatDragStart($event, cat.id)"
+                    @dragover="handleCatDragOver($event, cat.id)"
+                    @dragleave="handleCatDragLeave(cat.id)"
+                    @drop="handleCatDrop($event, cat.id)"
+                    @dragend="handleCatDragEnd"
+                  >
+                    <span class="category-sort-handle">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                    </span>
+                    <span class="category-sort-icon">{{ cat.icon }}</span>
+                    <span class="category-sort-name">{{ cat.name }}</span>
+                    <span class="category-sort-count">{{ navStore.getTotalLinksByCategory(cat.id) }} 个</span>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </div>
+        </Transition>
+
         <div v-if="showBookmarkImport" class="bookmark-import-overlay" @click.self="showBookmarkImport = false">
           <div class="bookmark-import-modal">
             <div class="bi-header">
@@ -983,8 +1146,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.25);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -1108,6 +1270,10 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .mode-btn {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 10px 16px;
   border-radius: 8px;
   font-size: 13px;
@@ -1173,6 +1339,196 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 .toggle.active {
   background: var(--primary);
   color: white;
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding-right: 4px;
+  transition: color var(--transition);
+}
+
+.collapsible-header:hover {
+  color: var(--primary);
+}
+
+.collapse-arrow {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.collapse-arrow.collapsed {
+  transform: rotate(-90deg);
+}
+
+.collapse-enter-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.collapse-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-8px);
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 2000px;
+  transform: translateY(0);
+}
+
+.color-styles-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.bg-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bg-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.bg-url-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.bg-url-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.bg-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all var(--transition);
+}
+
+.bg-upload-btn:hover {
+  border-color: var(--primary);
+  background: var(--bg-hover);
+}
+
+.bg-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+
+.bg-clear-btn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.bg-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.slider-row span:first-child {
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.range-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.slider-val {
+  flex-shrink: 0;
+  min-width: 40px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .search-engines {
@@ -1413,75 +1769,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   background: rgba(239, 68, 68, 0.2);
 }
 
-.bg-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.bg-input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.bg-url-input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--bg-card);
-  outline: none;
-  transition: border-color var(--transition);
-}
-
-.bg-url-input:focus {
-  border-color: var(--primary);
-}
-
-.bg-url-input::placeholder {
-  color: var(--text-muted);
-}
-
-.bg-clear-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition);
-  cursor: pointer;
-}
-
-.bg-clear-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.bg-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.bg-preview {
-  width: 100%;
-  height: 120px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.bg-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .color-btn-custom {
   font-size: 16px;
   font-weight: 700;
@@ -1535,26 +1822,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .color-text-input::placeholder {
   color: var(--text-muted);
-}
-
-.bg-upload-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: all var(--transition);
-  flex-shrink: 0;
-}
-
-.bg-upload-btn:hover {
-  border-color: var(--primary);
-  background: rgba(99, 102, 241, 0.05);
 }
 
 .sync-section {
@@ -1712,54 +1979,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   background: rgba(239, 68, 68, 0.1);
 }
 
-.slider-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  font-size: 14px;
-  color: var(--text);
-}
-
-.range-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--bg-hover);
-  outline: none;
-}
-
-.range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--primary);
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-
-.range-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--primary);
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-
-.slider-val {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  min-width: 40px;
-  text-align: right;
-}
-
 .account-info {
   display: flex;
   flex-direction: column;
@@ -1883,6 +2102,129 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   font-size: 11px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.toolbar-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.toolbar-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-manage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+  cursor: grab;
+  user-select: none;
+}
+
+.toolbar-manage-item:active {
+  cursor: grabbing;
+}
+
+.toolbar-manage-item.toolbar-dragging {
+  opacity: 0.4;
+}
+
+.toolbar-manage-item.toolbar-drop-target {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.toolbar-manage-item.toolbar-hidden {
+  opacity: 0.5;
+}
+
+.toolbar-manage-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.toolbar-manage-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.toolbar-toggle {
+  font-size: 14px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background var(--transition);
+}
+
+.toolbar-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.cat-sort-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cat-sort-modal {
+  width: 400px;
+  max-height: 70vh;
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cat-sort-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cat-sort-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cat-sort-body {
+  padding: 12px 16px;
+  flex: 1;
+  max-height: calc(70vh - 80px);
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 </style>
 

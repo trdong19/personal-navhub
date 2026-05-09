@@ -4,8 +4,10 @@ import type { WAAPIAnimation } from 'animejs'
 
 export function useCardEntrance(containerRef: Ref<HTMLElement | null>, selector = '.nav-card') {
   let observer: MutationObserver | null = null
+  let paused = false
 
   function animateCards() {
+    if (paused) return
     const el = containerRef.value
     if (!el || !(el instanceof HTMLElement)) return
     const cards = el.querySelectorAll(selector)
@@ -41,7 +43,14 @@ export function useCardEntrance(containerRef: Ref<HTMLElement | null>, selector 
     observer?.disconnect()
   })
 
-  return { animateCards }
+  function pause() { paused = true }
+  function resume() {
+    paused = false
+    observer?.disconnect()
+    setupObserver()
+  }
+
+  return { animateCards, pause, resume }
 }
 
 export function useCardHover(cardRef: Ref<HTMLElement | null>) {

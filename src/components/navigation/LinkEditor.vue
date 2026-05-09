@@ -43,6 +43,7 @@ const form = ref({
   color: '',
   opacity: 1,
   fontColor: '',
+  fontOpacity: 1,
 })
 
 const iconPreviewSrc = ref('')
@@ -113,6 +114,7 @@ onMounted(() => {
         color: link.color || '',
         opacity: link.opacity ?? 1,
         fontColor: link.fontColor || '',
+        fontOpacity: link.fontOpacity ?? 1,
       }
     }
   }
@@ -152,6 +154,7 @@ function handleSubmit() {
     color: form.value.color || undefined,
     opacity: form.value.opacity < 1 ? form.value.opacity : undefined,
     fontColor: form.value.fontColor || undefined,
+    fontOpacity: form.value.fontOpacity < 1 ? form.value.fontOpacity : undefined,
   }
 
   if (props.linkId) {
@@ -319,6 +322,14 @@ function handleSubmit() {
               <input type="color" :value="form.fontColor || '#22c55e'" @input="form.fontColor = ($event.target as HTMLInputElement).value" class="color-input-native" />
               <input type="text" class="color-text-input" v-model="form.fontColor" placeholder="#22c55e" />
             </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">字体透明度 {{ Math.round(form.fontOpacity * 100) }}%</label>
+          <div class="opacity-row">
+            <input v-model.number="form.fontOpacity" type="range" min="0.1" max="1" step="0.05" class="opacity-slider" />
+            <span class="opacity-value">{{ Math.round(form.fontOpacity * 100) }}%</span>
           </div>
         </div>
 

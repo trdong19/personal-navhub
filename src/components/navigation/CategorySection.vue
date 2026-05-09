@@ -2,14 +2,20 @@
 import { ref, computed } from 'vue'
 import type { NavCategory } from '@/types'
 import { useNavStore } from '@/stores/nav'
+import { useSettingsStore } from '@/stores/settings'
 import NavCard from './NavCard.vue'
+import { useFlipSort } from '@/composables/useFlipSort'
 
 const emit = defineEmits<{
   'open-editor': [id: string]
 }>()
 
 const navStore = useNavStore()
+const settingsStore = useSettingsStore()
+const isDoubleColumn = computed(() => settingsStore.settings.layout.categoryLayout === 'double')
 const draggingId = ref<string | null>(null)
+const categoryListRef = ref<HTMLElement | null>(null)
+const { recordPositions, animateFlip } = useFlipSort(categoryListRef)
 const dropTargetCategory = ref<string | null>(null)
 
 const draggingCategoryId = ref<string | null>(null)
@@ -30,22 +36,37 @@ function getChildren(parentId: string): NavCategory[] {
   return navStore.sortedCategories.filter(c => c.parentId === parentId)
 }
 
+let lastDragOverTarget = ''
+let dragOverThrottle = 0
+
 function handleDragStart(id: string) {
   draggingId.value = id
+  lastDragOverTarget = ''
 }
 
 function handleDragOver(targetId: string, categoryId: string) {
   if (!draggingId.value) return
   if (draggingId.value === targetId) return
+
+  const now = Date.now()
+  if (targetId === lastDragOverTarget && now - dragOverThrottle < 80) return
+  lastDragOverTarget = targetId
+  dragOverThrottle = now
+
   dropTargetCategory.value = categoryId
   const categoryLinks = navStore.getLinksByCategory(categoryId)
   const ids = categoryLinks.map(l => l.id)
   const fromIdx = ids.indexOf(draggingId.value)
   const toIdx = ids.indexOf(targetId)
+
+  const before = recordPositions(draggingId.value)
+
   if (toIdx === -1) {
     navStore.updateLink(draggingId.value, { category: categoryId })
+    animateFlip(before, draggingId.value)
     return
   }
+
   if (fromIdx !== -1) {
     ids.splice(fromIdx, 1)
     ids.splice(toIdx, 0, draggingId.value)
@@ -54,6 +75,7 @@ function handleDragOver(targetId: string, categoryId: string) {
     navStore.updateLink(draggingId.value, { category: categoryId })
   }
   navStore.reorderLinks(ids)
+  animateFlip(before, draggingId.value)
 }
 
 function handleCategoryDragOver(e: DragEvent, categoryId: string) {
@@ -204,7 +226,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 </script>
 
 <template>
-  <div class="category-list">
+  <div ref="categoryListRef" class="category-list" :class="{ 'double-column': isDoubleColumn }">
     <section
       v-for="category in topCategories"
       :key="category.id"
@@ -418,6 +440,12 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.category-list.double-column {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
 }
 
 .category-section {

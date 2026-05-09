@@ -15,17 +15,41 @@ import { defaultLinks, defaultCategories } from '@/utils/defaults'
 import { generateId, getFaviconUrl } from '@/utils/helpers'
 import { useAuth } from '@/composables/useAuth'
 
+export type LinkFilter = 'all' | 'intranet' | 'extranet'
+
 export const useNavStore = defineStore('nav', () => {
   // ==================== 状态 ====================
 
+  function ensurePinnedOrder(list: NavLink[]) {
+    return list.map((l, i) => ({
+      ...l,
+      pinnedOrder: l.pinnedOrder ?? (l.pinned ? i : 0),
+    }))
+  }
+
+  function filterByAddress(links: NavLink[], filter: LinkFilter): NavLink[] {
+    if (filter === 'all') return links
+    return links.filter(l => {
+      const hasIntranet = !!l.urls.intranet
+      const hasExtranet = !!l.urls.extranet
+      switch (filter) {
+        case 'intranet': return hasIntranet
+        case 'extranet': return hasExtranet
+        default: return true
+      }
+    })
+  }
+
   /** 所有书签列表 */
-  const links = ref<NavLink[]>(storageGet('navLinks', defaultLinks))
+  const links = ref<NavLink[]>(ensurePinnedOrder(storageGet('navLinks', defaultLinks)))
   /** 所有分类列表 */
   const categories = ref<NavCategory[]>(storageGet('navCategories', defaultCategories))
   /** 访问记录（最近 1000 条） */
   const accessRecords = ref<AccessRecord[]>(storageGet('accessRecords', []))
   /** 当前搜索关键词 */
   const searchQuery = ref('')
+  /** 链接筛选模式 */
+  const linkFilter = ref<LinkFilter>('all')
 
   /** 获取防抖同步推送函数 */
   const { debouncePush } = useAuth()
@@ -37,9 +61,12 @@ export const useNavStore = defineStore('nav', () => {
     [...categories.value].sort((a, b) => a.order - b.order)
   )
 
-  /** 所有置顶的书签（按 order 排序） */
+  /** 所有置顶的书签（按 pinnedOrder 排序，应用筛选） */
   const pinnedLinks = computed(() =>
-    links.value.filter(l => l.pinned).sort((a, b) => a.order - b.order)
+    filterByAddress(
+      links.value.filter(l => l.pinned).sort((a, b) => a.pinnedOrder - b.pinnedOrder),
+      linkFilter.value
+    )
   )
 
   /**
@@ -67,10 +94,11 @@ export const useNavStore = defineStore('nav', () => {
     return linksByCategory.value.get(categoryId) || []
   }
 
-  /** 按分类分组的书签 Map（key=分类ID, value=书签数组，已按 order 排序） */
+  /** 按分类分组的书签 Map（key=分类ID, value=书签数组，已按 order 排序，应用筛选） */
   const linksByCategory = computed(() => {
     const map = new Map<string, NavLink[]>()
-    for (const link of links.value) {
+    const filtered = filterByAddress(links.value, linkFilter.value)
+    for (const link of filtered) {
       const list = map.get(link.category)
       if (list) {
         list.push(link)
@@ -78,7 +106,6 @@ export const useNavStore = defineStore('nav', () => {
         map.set(link.category, [link])
       }
     }
-    // 每个分类内的书签按 order 排序
     for (const [, list] of map) {
       list.sort((a, b) => a.order - b.order)
     }
@@ -93,6 +120,10 @@ export const useNavStore = defineStore('nav', () => {
       totalCount += getTotalLinksByCategory(child.id)
     }
     return totalCount
+  }
+
+  function setLinkFilter(filter: LinkFilter) {
+    linkFilter.value = filter
   }
 
   // ==================== 数据持久化 ====================
@@ -117,9 +148,12 @@ export const useNavStore = defineStore('nav', () => {
    * @param link - 书签数据（不含 id, accessCount, lastAccessed, createdAt, order）
    * @returns 新创建的书签对象
    */
-  function addLink(link: Omit<NavLink, 'id' | 'accessCount' | 'lastAccessed' | 'createdAt' | 'order'>) {
+  function addLink(link: Omit<NavLink, 'id' | 'accessCount' | 'lastAccessed' | 'createdAt' | 'order' | 'pinnedOrder'>) {
     const maxOrder = links.value.length > 0
       ? Math.max(...links.value.map(l => l.order))
+      : -1
+    const maxPinnedOrder = links.value.filter(l => l.pinned).length > 0
+      ? Math.max(...links.value.filter(l => l.pinned).map(l => l.pinnedOrder))
       : -1
     const newLink: NavLink = {
       ...link,
@@ -127,6 +161,7 @@ export const useNavStore = defineStore('nav', () => {
       accessCount: 0,
       lastAccessed: 0,
       order: maxOrder + 1,
+      pinnedOrder: link.pinned ? maxPinnedOrder + 1 : 0,
       createdAt: Date.now(),
     }
     links.value.push(newLink)
@@ -143,6 +178,15 @@ export const useNavStore = defineStore('nav', () => {
   function updateLink(id: string, data: Partial<NavLink>) {
     const idx = links.value.findIndex(l => l.id === id)
     if (idx !== -1) {
+      if (data.iconUrl || data.cachedIconData) {
+        data.faviconFetchFailed = false
+      }
+      if (data.pinned === true && !links.value[idx].pinned) {
+        const maxPinnedOrder = links.value.filter(l => l.pinned).length > 0
+          ? Math.max(...links.value.filter(l => l.pinned).map(l => l.pinnedOrder))
+          : -1
+        data.pinnedOrder = maxPinnedOrder + 1
+      }
       links.value[idx] = { ...links.value[idx], ...data }
       saveLinks()
     }
@@ -190,6 +234,18 @@ export const useNavStore = defineStore('nav', () => {
     orderedIds.forEach((id, index) => {
       const link = links.value.find(l => l.id === id)
       if (link) link.order = index
+    })
+    saveLinks()
+  }
+
+  /**
+   * 重新排序置顶书签（仅更新 pinnedOrder，不影响 order）
+   * @param orderedIds - 按新顺序排列的置顶书签 ID 数组
+   */
+  function reorderPinnedLinks(orderedIds: string[]) {
+    orderedIds.forEach((id, index) => {
+      const link = links.value.find(l => l.id === id)
+      if (link) link.pinnedOrder = index
     })
     saveLinks()
   }
@@ -317,7 +373,10 @@ export const useNavStore = defineStore('nav', () => {
     try {
       const data = JSON.parse(json)
       if (data.links) {
-        links.value = data.links
+        links.value = data.links.map((l: NavLink, i: number) => ({
+          ...l,
+          pinnedOrder: l.pinnedOrder ?? (l.pinned ? i : 0),
+        }))
         saveLinks()
       }
       if (data.categories) {
@@ -370,20 +429,23 @@ export const useNavStore = defineStore('nav', () => {
    * 确保同步拉取的数据能立即反映到 UI
    */
   function reloadFromStorage() {
-    links.value = storageGet('navLinks', defaultLinks)
+    links.value = ensurePinnedOrder(storageGet('navLinks', defaultLinks))
     categories.value = storageGet('navCategories', defaultCategories)
     accessRecords.value = storageGet('accessRecords', [])
   }
 
   async function fetchAndCacheFavicon(link: NavLink): Promise<void> {
-    if (link.cachedIconData || link.iconUrl) return
+    if (link.cachedIconData || link.iconUrl || link.faviconFetchFailed) return
     const url = link.urls.extranet || link.urls.intranet
     if (!url) return
     const faviconUrl = getFaviconUrl(url)
     if (!faviconUrl) return
     try {
-      const resp = await fetch(faviconUrl, { signal: AbortSignal.timeout(5000) })
-      if (!resp.ok) return
+      const resp = await fetch(faviconUrl, { signal: AbortSignal.timeout(2000) })
+      if (!resp.ok) {
+        markFaviconFailed(link.id)
+        return
+      }
       const blob = await resp.blob()
       const reader = new FileReader()
       reader.onload = () => {
@@ -397,11 +459,21 @@ export const useNavStore = defineStore('nav', () => {
         }
       }
       reader.readAsDataURL(blob)
-    } catch {}
+    } catch {
+      markFaviconFailed(link.id)
+    }
+  }
+
+  function markFaviconFailed(linkId: string) {
+    const idx = links.value.findIndex(l => l.id === linkId)
+    if (idx !== -1) {
+      links.value[idx].faviconFetchFailed = true
+      saveLinks()
+    }
   }
 
   async function batchFetchFavicons(): Promise<void> {
-    const targets = links.value.filter(l => !l.cachedIconData && !l.iconUrl)
+    const targets = links.value.filter(l => !l.cachedIconData && !l.iconUrl && !l.faviconFetchFailed)
     const BATCH_SIZE = 4
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
       const batch = targets.slice(i, i + BATCH_SIZE)
@@ -416,6 +488,7 @@ export const useNavStore = defineStore('nav', () => {
     categories,
     accessRecords,
     searchQuery,
+    linkFilter,
     sortedCategories,
     pinnedLinks,
     filteredLinks,
@@ -426,12 +499,14 @@ export const useNavStore = defineStore('nav', () => {
     deleteLink,
     recordAccess,
     reorderLinks,
+    reorderPinnedLinks,
     toggleCategory,
     expandAllCategories,
     collapseAllCategories,
     addCategory,
     deleteCategory,
     updateCategory,
+    setLinkFilter,
     importLinks,
     exportData,
     importData,

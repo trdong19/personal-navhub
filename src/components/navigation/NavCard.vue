@@ -7,6 +7,8 @@ import { useSettingsStore } from '@/stores/settings'
 import { getFaviconCandidates } from '@/utils/helpers'
 
 const cardRef = ref<HTMLElement | null>(null)
+const isDragging = ref(false)
+const isDragOver = ref(false)
 
 const props = defineProps<{
   link: NavLink
@@ -34,6 +36,7 @@ const currentUrl = computed(() => {
 
 const faviconCandidates = computed(() => {
   if (props.link.iconUrl) return [props.link.iconUrl]
+  if (props.link.faviconFetchFailed) return []
   return getFaviconCandidates(currentUrl.value)
 })
 
@@ -82,6 +85,9 @@ function onFaviconError() {
   } else {
     faviconFailed.value = true
     faviconLoaded.value = false
+    if (!props.link.cachedIconData && !props.link.iconUrl) {
+      navStore.updateLink(props.link.id, { faviconFetchFailed: true })
+    }
   }
 }
 
@@ -102,7 +108,14 @@ const cardStyle = computed(() => {
     style['opacity'] = String(props.link.opacity)
   }
   if (props.link.fontColor) {
-    style['--card-font-color'] = props.link.fontColor
+    const fc = props.link.fontColor
+    const fo = props.link.fontOpacity ?? 1
+    const m = fc.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+    if (m && fo < 1) {
+      style['--card-font-color'] = `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${fo})`
+    } else {
+      style['--card-font-color'] = fc
+    }
   }
   return style
 })
@@ -115,6 +128,8 @@ const cardClass = computed(() => [
     'no-url': currentUrl.value === '#',
     'pinned': props.link.pinned,
     'has-custom-color': !!props.link.color,
+    'card-dragging': isDragging.value,
+    'card-drag-over': isDragOver.value,
   },
 ])
 
@@ -135,17 +150,20 @@ function handleContextMenu(e: MouseEvent) {
 }
 
 function handleDragStart(e: DragEvent) {
+  isDragging.value = true
   document.body.classList.add('is-dragging')
   e.dataTransfer!.effectAllowed = 'move'
   e.dataTransfer!.setData('text/plain', props.link.id)
   if (cardRef.value) {
     const clone = cardRef.value.cloneNode(true) as HTMLElement
     clone.style.width = cardRef.value.offsetWidth + 'px'
-    clone.style.opacity = '0.8'
+    clone.style.opacity = '0.85'
     clone.style.transform = 'rotate(2deg)'
     clone.style.position = 'absolute'
     clone.style.top = '-9999px'
     clone.style.left = '-9999px'
+    clone.style.boxShadow = '0 8px 32px rgba(99, 102, 241, 0.25)'
+    clone.style.borderRadius = '14px'
     document.body.appendChild(clone)
     e.dataTransfer!.setDragImage(clone, cardRef.value.offsetWidth / 2, 20)
     requestAnimationFrame(() => document.body.removeChild(clone))
@@ -156,10 +174,19 @@ function handleDragStart(e: DragEvent) {
 function handleDragOver(e: DragEvent) {
   e.preventDefault()
   e.dataTransfer!.dropEffect = 'move'
+  if (!isDragging.value) {
+    isDragOver.value = true
+  }
   emit('dragover', props.link.id)
 }
 
+function handleDragLeave() {
+  isDragOver.value = false
+}
+
 function handleDragEnd() {
+  isDragging.value = false
+  isDragOver.value = false
   document.body.classList.remove('is-dragging')
   emit('dragend')
 }
@@ -171,11 +198,13 @@ function handleDragEnd() {
     :class="cardClass"
     :style="cardStyle"
     :title="link.description || link.title"
+    :data-link-id="link.id"
     draggable="true"
     @click="handleClick"
     @contextmenu="handleContextMenu"
     @dragstart="handleDragStart"
     @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
     @dragend="handleDragEnd"
   >
     <div class="card-content">
@@ -216,6 +245,17 @@ function handleDragEnd() {
 .nav-card:hover {
   box-shadow: 0 6px 24px rgba(99, 102, 241, 0.18);
   transform: translateY(-3px);
+}
+
+.nav-card.card-dragging {
+  opacity: 0.35;
+  transform: scale(0.96);
+  box-shadow: none;
+}
+
+.nav-card.card-drag-over {
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.2);
+  transform: scale(1.03);
 }
 
 .nav-card.no-url {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { useNavStore } from '@/stores/nav'
+import { useNavStore, type LinkFilter } from '@/stores/nav'
 import { useAuth } from '@/composables/useAuth'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import PinnedSection from '@/components/navigation/PinnedSection.vue'
@@ -26,6 +26,25 @@ const showBackTop = computed(() => scrollY.value > 400)
 const fabOpen = ref(false)
 const showAddCategoryModal = ref(false)
 const newCatName = ref('')
+const headerRef = ref<InstanceType<typeof AppHeader> | null>(null)
+const showUserMenu = ref(false)
+const userMenuRef = ref<HTMLElement | null>(null)
+const allExpanded = computed(() => navStore.categories.length > 0 && navStore.categories.every(c => !c.collapsed))
+
+const filterPanelOpen = ref(false)
+const filterPanelRef = ref<HTMLElement | null>(null)
+const toolsExpanded = ref(false)
+
+const filterOptions: { label: string; value: LinkFilter }[] = [
+  { label: '全部显示', value: 'all' },
+  { label: '仅有内网地址', value: 'intranet' },
+  { label: '仅有外网地址', value: 'extranet' },
+]
+
+const filterLabel = computed(() => filterOptions.find(o => o.value === navStore.linkFilter)?.label || '全部显示')
+
+const toolbarItems = computed(() => settingsStore.getToolbar())
+const visibleToolbarItems = computed(() => toolbarItems.value.filter(b => b.visible))
 
 function toggleTheme() {
   const modes = ['light', 'dark', 'auto'] as const
@@ -42,6 +61,8 @@ function handleKeydown(e: KeyboardEvent) {
     showStats.value = false
     showAddCategoryModal.value = false
     fabOpen.value = false
+    filterPanelOpen.value = false
+    toolsExpanded.value = false
   }
 }
 
@@ -81,6 +102,29 @@ function closeFab() {
   fabOpen.value = false
 }
 
+function toggleExpandCollapse() {
+  if (allExpanded.value) {
+    navStore.collapseAllCategories()
+  } else {
+    navStore.expandAllCategories()
+  }
+}
+
+function toggleUserMenu() {
+  showUserMenu.value = !showUserMenu.value
+}
+
+function handleUserMenuOutside(e: MouseEvent) {
+  if (userMenuRef.value && !userMenuRef.value.contains(e.target as Node)) {
+    showUserMenu.value = false
+  }
+}
+
+function openAdminPanel() {
+  showUserMenu.value = false
+  headerRef.value?.openAdminPanel()
+}
+
 onMounted(async () => {
   settingsStore.init()
 
@@ -98,6 +142,7 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('scroll', handleScroll, { passive: true })
   document.addEventListener('click', handleOutsideClick)
+  document.addEventListener('click', handleUserMenuOutside)
 
   navStore.batchFetchFavicons()
 })
@@ -106,6 +151,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('scroll', handleScroll)
   document.removeEventListener('click', handleOutsideClick)
+  document.removeEventListener('click', handleUserMenuOutside)
 })
 
 function handleOutsideClick(e: MouseEvent) {
@@ -113,12 +159,31 @@ function handleOutsideClick(e: MouseEvent) {
   if (fab && !fab.contains(e.target as Node)) {
     fabOpen.value = false
   }
+  if (filterPanelRef.value && !filterPanelRef.value.contains(e.target as Node)) {
+    filterPanelOpen.value = false
+  }
+}
+
+function toggleFilterPanel() {
+  filterPanelOpen.value = !filterPanelOpen.value
+}
+
+function setFilter(filter: LinkFilter) {
+  navStore.setLinkFilter(filter)
+}
+
+function toggleTools() {
+  toolsExpanded.value = !toolsExpanded.value
+  if (!toolsExpanded.value) {
+    filterPanelOpen.value = false
+  }
 }
 </script>
 
 <template>
   <div class="app-container">
     <AppHeader
+      ref="headerRef"
       @open-settings="showSettings = true"
       @open-editor="openEditor()"
       @open-stats="showStats = true"
@@ -157,43 +222,114 @@ function handleOutsideClick(e: MouseEvent) {
     </Transition>
 
     <div class="floating-controls">
-      <button class="float-btn" :title="`主题: ${settingsStore.settings.theme.mode}`" @click="toggleTheme">
-        <svg v-if="settingsStore.settings.theme.mode === 'light'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-        <svg v-else-if="settingsStore.settings.theme.mode === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-        <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="m4.93 4.93 2.12 2.12"/><path d="m16.95 16.95 2.12 2.12"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.93 19.07 2.12-2.12"/><path d="m16.95 7.05 2.12-2.12"/></svg>
-      </button>
-      <NetworkSwitcher />
+      <Transition name="tool-expand">
+        <div v-if="toolsExpanded" class="tools-panel">
+          <template v-for="item in visibleToolbarItems" :key="item.id">
 
-      <div class="fab-container" :class="{ 'fab-open': fabOpen }">
-        <TransitionGroup name="fab-item">
-          <button v-if="fabOpen" key="add-cat" class="fab-option" title="添加分类" @click="openAddCategory">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
-            <span class="fab-label">添加分类</span>
-          </button>
-          <button v-if="fabOpen" key="add-link" class="fab-option" title="添加链接" @click="openEditor()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-            <span class="fab-label">添加链接</span>
-          </button>
-        </TransitionGroup>
-        <button class="fab-main" title="添加" @click="toggleFab">
-          <svg :class="['fab-icon', { rotated: fabOpen }]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        </button>
-      </div>
+            <button v-if="item.id === 'theme'" class="float-btn" :title="`主题: ${settingsStore.settings.theme.mode}`" @click="toggleTheme">
+              <svg v-if="settingsStore.settings.theme.mode === 'light'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+              <svg v-else-if="settingsStore.settings.theme.mode === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="m4.93 4.93 2.12 2.12"/><path d="m16.95 16.95 2.12 2.12"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.93 19.07 2.12-2.12"/><path d="m16.95 7.05 2.12-2.12"/></svg>
+            </button>
 
-      <div class="expand-collapse-group">
-        <button class="float-btn" title="一键展开所有分类" @click="navStore.expandAllCategories()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 6 6 6-6"/><path d="m6 11 6 6 6-6"/></svg>
-        </button>
-        <button class="float-btn" title="一键收回所有分类" @click="navStore.collapseAllCategories()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 13-6-6-6 6"/><path d="m18 21-6-6-6 6"/></svg>
-        </button>
-      </div>
+            <NetworkSwitcher v-else-if="item.id === 'network'" />
 
-      <Transition name="fade">
-        <button v-if="showBackTop" class="float-btn" title="回到顶部" @click="scrollToTop">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
-        </button>
+            <div v-else-if="item.id === 'add'" class="fab-container" :class="{ 'fab-open': fabOpen }">
+              <TransitionGroup name="fab-item">
+                <button v-if="fabOpen" key="add-cat" class="fab-option" title="添加分类" @click="openAddCategory">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
+                  <span class="fab-label">添加分类</span>
+                </button>
+                <button v-if="fabOpen" key="add-link" class="fab-option" title="添加链接" @click="openEditor()">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                  <span class="fab-label">添加链接</span>
+                </button>
+              </TransitionGroup>
+              <button class="fab-main" title="添加" @click="toggleFab">
+                <svg :class="['fab-icon', { rotated: fabOpen }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </button>
+            </div>
+
+            <div v-else-if="item.id === 'expand'" class="expand-collapse-group">
+              <button class="float-btn" :title="allExpanded ? '一键收回所有分类' : '一键展开所有分类'" @click="toggleExpandCollapse">
+                <svg v-if="allExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 13-6-6-6 6"/><path d="m18 21-6-6-6 6"/></svg>
+                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 6 6 6-6"/><path d="m6 11 6 6 6-6"/></svg>
+              </button>
+            </div>
+
+            <div v-else-if="item.id === 'user' && auth.isLoggedIn.value" ref="userMenuRef" class="user-menu-fab">
+              <button class="float-btn user-fab-btn" title="菜单" @click="toggleUserMenu">
+                <span class="user-fab-avatar">🍓</span>
+              </button>
+              <div v-if="showUserMenu" class="user-dropdown" @click="showUserMenu = false">
+                <div class="user-dropdown-header">
+                  <span class="user-dropdown-avatar">👤</span>
+                  <span class="user-dropdown-name">{{ auth.username }}</span>
+                  <span v-if="auth.isAdmin.value" class="user-dropdown-badge">管理员</span>
+                </div>
+                <div class="menu-divider"></div>
+                <button class="menu-item" @click="showSettings = true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                  设置
+                </button>
+                <button class="menu-item" @click="showStats = true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                  访问统计
+                </button>
+                <button v-if="auth.isAdmin.value" class="menu-item" @click="openAdminPanel">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  管理面板
+                </button>
+                <div class="menu-divider"></div>
+                <button class="menu-item menu-item-danger" @click="auth.logout()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                  退出登录
+                </button>
+              </div>
+            </div>
+
+            <div v-else-if="item.id === 'filter'" ref="filterPanelRef" class="filter-container">
+              <button
+                class="float-btn filter-btn"
+                :class="{ active: navStore.linkFilter !== 'all' }"
+                title="链接筛选"
+                @click="toggleFilterPanel"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              </button>
+              <Transition name="filter-pop">
+                <div v-if="filterPanelOpen" class="filter-panel">
+                  <div class="filter-title">筛选链接</div>
+                  <button
+                    v-for="opt in filterOptions"
+                    :key="opt.value"
+                    class="filter-option"
+                    :class="{ selected: navStore.linkFilter === opt.value }"
+                    @click="setFilter(opt.value)"
+                  >
+                    <span class="filter-check" v-if="navStore.linkFilter === opt.value">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                    <span class="filter-radio" v-else></span>
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </Transition>
+            </div>
+
+            <Transition v-else-if="item.id === 'backTop'" name="fade">
+              <button v-if="showBackTop" class="float-btn" title="回到顶部" @click="scrollToTop">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+              </button>
+            </Transition>
+
+          </template>
+        </div>
       </Transition>
+
+      <button class="float-btn tools-toggle-btn" :class="{ expanded: toolsExpanded }" title="工具栏" @click="toggleTools">
+        <svg :class="['tools-icon', { rotated: !toolsExpanded }]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      </button>
     </div>
 
     <Transition name="fade">
@@ -295,6 +431,101 @@ function handleOutsideClick(e: MouseEvent) {
   height: 32px;
 }
 
+.user-menu-fab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.user-fab-btn {
+  font-size: 16px;
+}
+
+.user-fab-avatar {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.user-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-card);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  min-width: 180px;
+  padding: 4px;
+  z-index: 200;
+  animation: userDropIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.user-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.user-dropdown-avatar {
+  font-size: 20px;
+}
+
+.user-dropdown-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.user-dropdown-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: white;
+  font-weight: 500;
+}
+
+@keyframes userDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.user-dropdown .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.user-dropdown .menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.user-dropdown .menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.user-dropdown .menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 8px;
+}
+
 .fab-container {
   position: relative;
   display: flex;
@@ -307,25 +538,30 @@ function handleOutsideClick(e: MouseEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--bg-card);
   border: none;
-  color: white;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 92;
 }
 
 .fab-main:hover {
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
-  transform: scale(1.05);
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  transform: translateY(-2px);
 }
 
 .fab-open .fab-main {
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .fab-icon {
@@ -359,6 +595,11 @@ function handleOutsideClick(e: MouseEvent) {
   border-color: var(--primary);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   transform: translateX(-4px);
+}
+
+.fab-option svg {
+  width: 12px;
+  height: 12px;
 }
 
 .fab-label {
@@ -527,6 +768,155 @@ function handleOutsideClick(e: MouseEvent) {
 .modal-pop-leave-to {
   opacity: 0;
   transform: scale(0.96) translateY(4px);
+}
+
+.tools-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.tools-toggle-btn {
+  z-index: 95;
+  background: var(--primary);
+  color: white;
+}
+
+.tools-toggle-btn:hover {
+  background: var(--primary);
+  opacity: 0.85;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.tools-toggle-btn.expanded {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.tools-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tools-icon.rotated {
+  transform: rotate(90deg);
+}
+
+.tool-expand-enter-active {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tool-expand-leave-active {
+  transition: all 0.2s ease;
+}
+
+.tool-expand-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.9);
+}
+
+.tool-expand-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
+}
+
+.filter-container {
+  position: relative;
+}
+
+.filter-btn {
+  position: relative;
+}
+
+.filter-btn.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.filter-panel {
+  position: absolute;
+  bottom: 0;
+  right: calc(100% + 10px);
+  background: var(--bg-card);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  min-width: 190px;
+  padding: 8px 4px;
+  z-index: 200;
+}
+
+.filter-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 14px 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.filter-option:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.filter-option.selected {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.filter-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+}
+
+.filter-radio {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  margin: 5px;
+  flex-shrink: 0;
+}
+
+.filter-pop-enter-active {
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.filter-pop-leave-active {
+  transition: all 0.15s ease;
+}
+
+.filter-pop-enter-from {
+  opacity: 0;
+  transform: translateX(8px) scale(0.95);
+}
+
+.filter-pop-leave-to {
+  opacity: 0;
+  transform: translateX(4px) scale(0.98);
 }
 
 @media (max-width: 768px) {

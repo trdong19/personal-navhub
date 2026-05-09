@@ -9,6 +9,7 @@ const emit = defineEmits<{
   'open-settings': []
   'open-editor': []
   'open-stats': []
+  'open-admin': []
 }>()
 
 const settingsStore = useSettingsStore()
@@ -165,6 +166,8 @@ watch(() => auth.isLoggedIn.value, (loggedIn) => {
   }
 })
 onUnmounted(() => document.removeEventListener('click', handleClickOutside))
+
+defineExpose({ openAdminPanel })
 </script>
 
 <template>
@@ -185,31 +188,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             登录
           </button>
         </div>
-        <div v-else ref="menuRef" class="user-menu-wrapper">
-          <button class="user-badge-btn" @click="showMenu = !showMenu">
-            <span class="user-avatar">👤</span>
-            <svg :class="['chevron', { open: showMenu }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          <div v-if="showMenu" ref="menuDropdownRef" class="dropdown-menu" @click="showMenu = false">
-            <button class="menu-item" @click="emit('open-settings')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-              设置
-            </button>
-            <button class="menu-item" @click="emit('open-stats')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-              访问统计
-            </button>
-            <button v-if="auth.isAdmin.value" class="menu-item menu-item-admin" @click="openAdminPanel">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              管理面板
-            </button>
-            <div class="menu-divider"></div>
-            <button class="menu-item menu-item-danger" @click="handleLogout">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-              退出登录
-            </button>
-          </div>
-        </div>
+
       </div>
     </div>
 
@@ -430,7 +409,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 .login-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 3px 8px rgba(99, 102, 241, 0.25);
 }
 
 .user-menu-wrapper {

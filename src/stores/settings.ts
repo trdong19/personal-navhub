@@ -9,7 +9,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { UserSettings, ThemeMode, SearchEngine } from '@/types'
+import type { UserSettings, ThemeMode, SearchEngine, ToolbarButtonId, ToolbarButtonConfig, CategoryLayout } from '@/types'
 import { storageGet, storageSet, storageRemove } from '@/utils/storage'
 import { defaultSettings } from '@/utils/defaults'
 import { useAuth } from '@/composables/useAuth'
@@ -232,10 +232,24 @@ export const useSettingsStore = defineStore('settings', () => {
       document.documentElement.classList.remove('has-card-color')
     }
 
-    // 自定义字体颜色
+    // 自定义字体颜色 + 透明度
     const textColor = settings.value.theme.textColor
-    if (textColor) {
-      document.documentElement.style.setProperty('--text-color-custom', textColor)
+    const textOpacity = settings.value.theme.textOpacity ?? 1
+    if (textColor || textOpacity < 1) {
+      let finalColor: string
+      if (textColor) {
+        const rgb = hexToRgb(textColor)
+        if (rgb) {
+          finalColor = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${textOpacity})`
+        } else {
+          finalColor = textColor
+        }
+      } else {
+        const fallback = dark ? '#f1f5f9' : '#0f172a'
+        const rgb = hexToRgb(fallback)!
+        finalColor = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${textOpacity})`
+      }
+      document.documentElement.style.setProperty('--text-color-custom', finalColor)
       document.documentElement.classList.add('has-text-color')
     } else {
       document.documentElement.style.removeProperty('--text-color-custom')
@@ -389,6 +403,61 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.theme.textColor = color
     save()
     applyTheme()
+  }
+
+  /** 设置字体颜色透明度 */
+  function setTextOpacity(value: number) {
+    settings.value.theme.textOpacity = value
+    save()
+    applyTheme()
+  }
+
+  /** 获取工具栏配置（确保旧用户有默认值） */
+  function getToolbar(): ToolbarButtonConfig[] {
+    if (!settings.value.layout.toolbar) {
+      settings.value.layout.toolbar = [
+        { id: 'theme', visible: true },
+        { id: 'network', visible: true },
+        { id: 'add', visible: true },
+        { id: 'expand', visible: true },
+        { id: 'user', visible: true },
+        { id: 'filter', visible: true },
+        { id: 'backTop', visible: true },
+      ]
+    }
+    return settings.value.layout.toolbar
+  }
+
+  /** 切换工具栏按钮可见性 */
+  function toggleToolbarButton(id: ToolbarButtonId) {
+    const toolbar = getToolbar()
+    const btn = toolbar.find(b => b.id === id)
+    if (btn) {
+      btn.visible = !btn.visible
+      save()
+    }
+  }
+
+  /** 重新排序工具栏按钮 */
+  function reorderToolbar(orderedIds: ToolbarButtonId[]) {
+    const toolbar = getToolbar()
+    const reordered: ToolbarButtonConfig[] = []
+    for (const id of orderedIds) {
+      const existing = toolbar.find(b => b.id === id)
+      if (existing) {
+        reordered.push(existing)
+      } else {
+        reordered.push({ id, visible: true })
+      }
+    }
+    settings.value.layout.toolbar = reordered
+    save()
+  }
+
+  /** 设置分类布局模式（单列 / 双列） */
+  function setCategoryLayout(layout: CategoryLayout) {
+    settings.value.layout.categoryLayout = layout
+    save()
   }
 
   /** 设置卡片尺寸（small / medium / large） */
@@ -559,6 +628,11 @@ export const useSettingsStore = defineStore('settings', () => {
     setCardColor,
     setCardOpacity,
     setTextColor,
+    setTextOpacity,
+    getToolbar,
+    toggleToolbarButton,
+    reorderToolbar,
+    setCategoryLayout,
     setCardSize,
     setColumns,
     toggleDescription,

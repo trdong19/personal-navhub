@@ -1,0 +1,6 @@
+name = "navhub"
+pages_build_output_dir = "./dist"
+
+[[kv_namespaces]]
+binding = "NAV_KV"
+id = "local-dev"

@@ -76,7 +76,38 @@ async function isAdmin(username: string, env: Env): Promise<boolean> {
   return (await getUserRole(username, env)) === 'admin'
 }
 
-async function getUserResources(username: string, env: Env): Promise<Record<string, string> | undefined> {
+function resHash(data: string): string {
+  let h = 0
+  const step = Math.max(1, Math.floor(data.length / 200))
+  for (let i = 0; i < data.length; i += step) {
+    h = ((h << 5) - h + data.charCodeAt(i)) | 0
+  }
+  return `${data.length}_${h}`
+}
+
+async function getUserResourcesMeta(username: string, env: Env): Promise<Record<string, string> | undefined> {
+  const list = await env.NAV_KV.list({ prefix: `res:${username}:` })
+  if (list.keys.length === 0) return undefined
+  const meta: Record<string, string> = {}
+  for (const key of list.keys) {
+    const val = await env.NAV_KV.get(key.name)
+    if (val) {
+      const resId = key.name.replace(`res:${username}:`, '')
+      meta[resId] = resHash(val)
+    }
+  }
+  return Object.keys(meta).length > 0 ? meta : undefined
+}
+
+async function getUserResources(username: string, env: Env, ids?: string[]): Promise<Record<string, string> | undefined> {
+  if (ids && ids.length > 0) {
+    const result: Record<string, string> = {}
+    for (const id of ids) {
+      const val = await env.NAV_KV.get(`res:${username}:${id}`)
+      if (val) result[id] = val
+    }
+    return Object.keys(result).length > 0 ? result : undefined
+  }
   const list = await env.NAV_KV.list({ prefix: `res:${username}:` })
   if (list.keys.length === 0) return undefined
   const result: Record<string, string> = {}
@@ -238,13 +269,32 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return json({ data: null, message: '暂无数据' })
     }
 
-    const data: SyncData & { resources?: Record<string, string> } = JSON.parse(raw)
-    const resources = await getUserResources(username, env)
-    if (resources) {
-      data.resources = resources
+    const data: SyncData & { resources?: Record<string, string>; resourcesMeta?: Record<string, string> } = JSON.parse(raw)
+    const resourcesMeta = await getUserResourcesMeta(username, env)
+    if (resourcesMeta) {
+      data.resourcesMeta = resourcesMeta
     }
 
     return json({ data, updatedAt: data.updatedAt, version: data.version })
+  }
+
+  if (action === 'pull-resources') {
+    const authHeader = context.request.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token) return json({ error: '未登录' }, 401)
+
+    const username = await extractUser(token, env)
+    if (!username) return json({ error: '登录已过期' }, 401)
+
+    let body: { ids: string[] }
+    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      return json({ resources: {} })
+    }
+
+    const resources = await getUserResources(username, env, body.ids)
+    return json({ resources: resources || {} })
   }
 
   if (action === 'logout') {

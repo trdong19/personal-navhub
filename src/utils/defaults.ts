@@ -44,6 +44,17 @@ export const defaultSettings: UserSettings = {
     showDescription: true,
     /** 非紧凑模式 */
     compactMode: false,
+    /** 工具栏按钮配置 */
+    toolbar: [
+      { id: 'theme', visible: true },
+      { id: 'network', visible: true },
+      { id: 'add', visible: true },
+      { id: 'expand', visible: true },
+      { id: 'user', visible: true },
+      { id: 'filter', visible: true },
+      { id: 'backTop', visible: true },
+    ],
+    categoryLayout: 'single',
   },
   /** 搜索设置 */
   search: {
