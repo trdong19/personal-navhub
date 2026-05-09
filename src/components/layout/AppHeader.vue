@@ -49,7 +49,13 @@ async function handleAuthSubmit() {
   if (isRegisterMode.value) {
     await auth.register(authForm.value.username.trim(), authForm.value.password)
     if (auth.isLoggedIn.value) {
-      await auth.push()
+      localStorage.removeItem('nav_userSettings')
+      localStorage.removeItem('nav_navLinks')
+      localStorage.removeItem('nav_navCategories')
+      localStorage.removeItem('nav_accessRecords')
+      localStorage.removeItem('nav_local_bg_image')
+      settingsStore.reloadFromStorage()
+      navStore.reloadFromStorage()
       closeAuthModal()
     }
   } else {

@@ -144,6 +144,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let body: { username: string; password: string }
     try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
 
+    const regRaw = await env.NAV_KV.get('system:registration_enabled')
+    if (regRaw === 'false') {
+      return json({ error: '注册功能已关闭' }, 403)
+    }
+
     const { username, password } = body
     if (!username || username.length < 2 || username.length > 20) {
       return json({ error: '用户名需要2-20个字符' }, 400)
