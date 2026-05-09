@@ -221,13 +221,41 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let body: { data: Record<string, unknown> }
     try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
 
+    const incoming = JSON.stringify({
+      s: body.data.settings,
+      l: body.data.links,
+      c: body.data.categories,
+      r: body.data.accessRecords,
+    })
+
+    const existingRaw = await env.NAV_KV.get(`data:${username}`)
+    let version = 1
+    if (existingRaw) {
+      const existing = JSON.parse(existingRaw)
+      version = (existing.version || 0) + 1
+      const existingCompact = JSON.stringify({
+        s: existing.settings,
+        l: existing.links,
+        c: existing.categories,
+        r: existing.accessRecords,
+      })
+      const noDataChange = incoming === existingCompact
+      const noResChange = !body.data.resources || Object.keys(body.data.resources).length === 0
+
+      if (noDataChange && noResChange) {
+        return json({ success: true, version: existing.version, updatedAt: existing.updatedAt, skipped: true })
+      }
+    } else {
+      version = 1
+    }
+
     const syncData: SyncData = {
       settings: body.data.settings as SyncData['settings'],
       links: (body.data.links as unknown[]) || [],
       categories: (body.data.categories as unknown[]) || [],
       accessRecords: (body.data.accessRecords as unknown[]) || [],
       updatedAt: Date.now(),
-      version: ((body.data.version as number) || 0) + 1,
+      version,
     }
 
     await env.NAV_KV.put(`data:${username}`, JSON.stringify(syncData))
@@ -235,7 +263,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (body.data.resources && typeof body.data.resources === 'object') {
       const resources = body.data.resources as Record<string, string>
       for (const [key, val] of Object.entries(resources)) {
-        await env.NAV_KV.put(`res:${username}:${key}`, val)
+        const existingRes = await env.NAV_KV.get(`res:${username}:${key}`)
+        if (existingRes !== val) {
+          await env.NAV_KV.put(`res:${username}:${key}`, val)
+        }
       }
     }
 

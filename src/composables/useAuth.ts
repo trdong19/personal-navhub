@@ -51,7 +51,9 @@ const authStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 /** 认证状态消息（用于 UI 显示） */
 const authMessage = ref('')
 /** 自动同步的防抖定时器 */
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  /** 上次成功推送的数据哈希，用于前端去重 */
+  let lastPushHash = ''
 
 /**
  * 获取 API 基础路径
@@ -115,6 +117,7 @@ export function useAuth() {
     localStorage.removeItem(PULL_RES_HASH_KEY)
     localStorage.removeItem('nav_cached_resources')
     isLoggedIn.value = false
+    lastPushHash = ''
   }
 
   /**
@@ -226,11 +229,15 @@ export function useAuth() {
   async function push(): Promise<boolean> {
     if (!token.value) return false
     try {
-      // 从 localStorage 读取本地数据
       const settingsData = localStorage.getItem('nav_userSettings')
       const linksData = localStorage.getItem('nav_navLinks')
       const categoriesData = localStorage.getItem('nav_navCategories')
       const recordsData = localStorage.getItem('nav_accessRecords')
+
+      const coreHash = resHash((settingsData || '') + '|' + (linksData || '') + '|' + (categoriesData || '') + '|' + (recordsData || ''))
+      if (coreHash === lastPushHash) {
+        return true
+      }
 
       const settings = settingsData ? JSON.parse(settingsData) : null
       const links: any[] = linksData ? JSON.parse(linksData) : []
@@ -303,6 +310,9 @@ export function useAuth() {
         return false
       }
       const result = await safeJson(res)
+      if (res.ok) {
+        lastPushHash = coreHash
+      }
       return res.ok
     } catch {
       return false
@@ -435,6 +445,8 @@ export function useAuth() {
           } catch {}
         }
       }
+
+      lastPushHash = ''
 
       return true
     } catch (err: any) {
