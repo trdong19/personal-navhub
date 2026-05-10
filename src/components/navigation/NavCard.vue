@@ -98,6 +98,14 @@ const showPlaceholder = computed(() => {
   return faviconFailed.value
 })
 
+const letterIcon = computed(() => {
+  if (props.link.icon) return props.link.icon
+  const title = props.link.title || ''
+  const first = title.charAt(0)
+  if (!first) return '?'
+  return first.toUpperCase()
+})
+
 const cardStyle = computed(() => {
   const style: Record<string, string> = {}
   if (props.link.color) {
@@ -216,7 +224,7 @@ function handleDragEnd() {
           @load="onFaviconLoad"
           @error="onFaviconError"
         />
-        <div v-else class="icon-placeholder">{{ link.icon }}</div>
+        <div v-else class="icon-placeholder">{{ letterIcon }}</div>
       </div>
       <div class="card-info">
         <div class="card-title">{{ link.title }}</div>

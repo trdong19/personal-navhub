@@ -180,7 +180,7 @@ export interface SearchEngine {
   /** URL 模板，{q} 会被替换为搜索词 */
   urlTemplate: string
   /** 引擎图标（emoji） */
-  icon: string
+  icon?: string
 }
 
 // ==================== 用户设置 ====================

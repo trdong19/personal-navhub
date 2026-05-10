@@ -45,11 +45,13 @@ function handleEngineFaviconError(e: Event, urlTemplate: string, id: string) {
   if (nextIdx < candidates.length) {
     engineIconIndex.value = { ...engineIconIndex.value, [id]: nextIdx }
   } else {
-    const img = e.target as HTMLImageElement
-    img.style.display = 'none'
-    const fallback = img.nextElementSibling as HTMLElement
-    if (fallback) fallback.style.display = ''
+    engineIconIndex.value = { ...engineIconIndex.value, [id]: -1 }
   }
+}
+
+function getEngineLetter(engine: { name: string; id: string }): string {
+  const name = engine.name || engine.id || '?'
+  return name.charAt(0).toUpperCase()
 }
 
 watch(currentEngine, () => {
@@ -133,8 +135,10 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
     <div class="search-bar" :class="{ focused: showSuggestions && suggestions.length > 0 }">
       <div ref="enginePickerRef" class="engine-selector">
         <button class="engine-btn" :title="'切换搜索引擎 (当前: ' + currentEngine.name + ')'" @click="showEnginePicker = !showEnginePicker">
-          <img :key="currentEngine.id + '-' + (engineIconIndex[currentEngine.id] || 0)" :src="getEngineIconSrc(currentEngine.urlTemplate, currentEngine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, currentEngine.urlTemplate, currentEngine.id)" />
-          <span class="engine-icon" style="display:none">{{ currentEngine.icon }}</span>
+          <template v-if="(engineIconIndex[currentEngine.id] ?? 0) >= 0">
+            <img :key="currentEngine.id + '-' + (engineIconIndex[currentEngine.id] || 0)" :src="getEngineIconSrc(currentEngine.urlTemplate, currentEngine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, currentEngine.urlTemplate, currentEngine.id)" />
+          </template>
+          <span v-else class="engine-letter">{{ getEngineLetter(currentEngine) }}</span>
         </button>
         <div v-if="showEnginePicker" ref="engineDropdownRef" class="engine-dropdown">
           <button
@@ -143,8 +147,10 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             :class="['engine-option', { active: engine.id === currentEngine.id }]"
             @click="selectEngine(engine.id)"
           >
-            <img :key="engine.id + '-' + (engineIconIndex[engine.id] || 0)" :src="getEngineIconSrc(engine.urlTemplate, engine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, engine.urlTemplate, engine.id)" />
-            <span class="engine-option-icon" style="display:none">{{ engine.icon }}</span>
+            <template v-if="(engineIconIndex[engine.id] ?? 0) >= 0">
+              <img :key="engine.id + '-' + (engineIconIndex[engine.id] || 0)" :src="getEngineIconSrc(engine.urlTemplate, engine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, engine.urlTemplate, engine.id)" />
+            </template>
+            <span v-else class="engine-option-letter">{{ getEngineLetter(engine) }}</span>
             <span>{{ engine.name }}</span>
           </button>
         </div>
@@ -231,15 +237,26 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   background: var(--bg-hover);
 }
 
-.engine-icon {
-  font-size: 18px;
-}
-
 .engine-favicon {
   width: 18px;
   height: 18px;
   object-fit: contain;
   border-radius: 3px;
+}
+
+.engine-letter {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary, #6366f1);
+  background: var(--primary-light, rgba(99, 102, 241, 0.12));
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
 .engine-dropdown {
@@ -277,8 +294,19 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   color: white;
 }
 
-.engine-option-icon {
-  font-size: 15px;
+.engine-option-letter {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary, #6366f1);
+  background: var(--primary-light, rgba(99, 102, 241, 0.12));
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
 .engine-option .engine-favicon {

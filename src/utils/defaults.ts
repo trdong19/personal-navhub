@@ -64,10 +64,10 @@ export const defaultSettings: UserSettings = {
     searchOnType: true,
     /** 预置的搜索引擎列表 */
     engines: [
-      { id: 'bing', name: 'Bing', shortcut: 'b', urlTemplate: 'https://www.bing.com/search?q={q}', icon: '🅱️' },
-      { id: 'baidu', name: '百度', shortcut: 'bd', urlTemplate: 'https://www.baidu.com/s?wd={q}', icon: '🔎' },
-      { id: 'github', name: 'GitHub', shortcut: 'gh', urlTemplate: 'https://github.com/search?q={q}', icon: '🐙' },
-      { id: 'duckduckgo', name: 'DuckDuckGo', shortcut: 'ddg', urlTemplate: 'https://duckduckgo.com/?q={q}', icon: '🦆' },
+      { id: 'bing', name: 'Bing', shortcut: 'b', urlTemplate: 'https://www.bing.com/search?q={q}' },
+      { id: 'baidu', name: '百度', shortcut: 'bd', urlTemplate: 'https://www.baidu.com/s?wd={q}' },
+      { id: 'github', name: 'GitHub', shortcut: 'gh', urlTemplate: 'https://github.com/search?q={q}' },
+      { id: 'duckduckgo', name: 'DuckDuckGo', shortcut: 'ddg', urlTemplate: 'https://duckduckgo.com/?q={q}' },
     ],
   },
 }

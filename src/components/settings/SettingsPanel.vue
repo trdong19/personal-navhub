@@ -5,6 +5,19 @@ import { useSettingsStore } from '@/stores/settings'
 import { useAuth } from '@/composables/useAuth'
 import FileManager from './FileManager.vue'
 import type { ToolbarButtonId } from '@/types'
+import { getEngineFaviconCandidates } from '@/utils/helpers'
+
+function getEngineFaviconSrc(urlTemplate: string): string {
+  return getEngineFaviconCandidates(urlTemplate)[0] || ''
+}
+
+const engineFaviconFailed = ref<Set<string>>(new Set())
+function onEngineFaviconError(id: string) {
+  engineFaviconFailed.value = new Set([...engineFaviconFailed.value, id])
+}
+function getEngineLetter(name: string): string {
+  return (name || '?').charAt(0).toUpperCase()
+}
 
 const emit = defineEmits<{
   close: []
@@ -153,14 +166,12 @@ const engineForm = reactive({
   name: '',
   shortcut: '',
   urlTemplate: '',
-  icon: '',
 })
 
 function resetEngineForm() {
   engineForm.name = ''
   engineForm.shortcut = ''
   engineForm.urlTemplate = ''
-  engineForm.icon = ''
   editingEngineId.value = null
   showEngineForm.value = false
 }
@@ -177,7 +188,6 @@ function openEditEngine(id: string) {
   engineForm.name = engine.name
   engineForm.shortcut = engine.shortcut
   engineForm.urlTemplate = engine.urlTemplate
-  engineForm.icon = engine.icon
   showEngineForm.value = true
 }
 
@@ -188,14 +198,12 @@ function saveEngine() {
       name: engineForm.name,
       shortcut: engineForm.shortcut,
       urlTemplate: engineForm.urlTemplate,
-      icon: engineForm.icon || '🔍',
     })
   } else {
     settingsStore.addEngine({
       name: engineForm.name,
       shortcut: engineForm.shortcut,
       urlTemplate: engineForm.urlTemplate,
-      icon: engineForm.icon || '🔍',
     })
   }
   resetEngineForm()
@@ -908,7 +916,10 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               :class="['engine-item', { active: settingsStore.settings.search.defaultEngine === engine.id }]"
             >
               <div class="engine-item-main" @click="settingsStore.setDefaultEngine(engine.id)">
-                <span class="engine-item-icon">{{ engine.icon }}</span>
+                <template v-if="!engineFaviconFailed.has(engine.id)">
+                  <img :src="getEngineFaviconSrc(engine.urlTemplate)" class="engine-item-favicon" @error="onEngineFaviconError(engine.id)" />
+                </template>
+                <span v-else class="engine-item-letter">{{ getEngineLetter(engine.name) }}</span>
                 <div class="engine-item-info">
                   <div class="engine-item-name">{{ engine.name }}</div>
                   <div class="engine-item-url">{{ engine.urlTemplate }}</div>
@@ -931,10 +942,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               <div class="form-group">
                 <label>名称</label>
                 <input v-model="engineForm.name" placeholder="如：Google" />
-              </div>
-              <div class="form-group">
-                <label>图标 (emoji)</label>
-                <input v-model="engineForm.icon" placeholder="如：🔍" />
               </div>
               <div class="form-group">
                 <label>URL 模板</label>
@@ -1591,9 +1598,26 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   background: var(--bg-hover);
 }
 
-.engine-item-icon {
-  font-size: 18px;
+.engine-item-favicon {
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
+  border-radius: 3px;
+}
+
+.engine-item-letter {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary, #6366f1);
+  background: var(--primary-light, rgba(99, 102, 241, 0.12));
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
 .engine-item-info {
