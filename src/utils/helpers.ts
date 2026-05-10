@@ -45,12 +45,28 @@ export function formatTime(timestamp: number): string {
  * @param url - 网站 URL
  * @returns favicon URL 候选数组（按优先级排序）
  */
+/**
+ * 判断 hostname 是否为内网/私有地址
+ */
+function isPrivateHostname(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname.endsWith('.local')) return true
+  const parts = hostname.split('.').map(Number)
+  if (parts.length !== 4 || parts.some(isNaN)) return false
+  if (parts[0] === 10) return true
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true
+  if (parts[0] === 192 && parts[1] === 168) return true
+  return false
+}
+
 export function getFaviconCandidates(url: string): string[] {
   try {
     const { protocol, hostname } = new URL(url)
     if (!hostname) return []
-    const siteFavicon = `${protocol}//${hostname}/favicon.ico`
     const ddgFavicon = `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+    if (isPrivateHostname(hostname)) {
+      return [ddgFavicon]
+    }
+    const siteFavicon = `${protocol}//${hostname}/favicon.ico`
     return [siteFavicon, ddgFavicon]
   } catch {
     return []
