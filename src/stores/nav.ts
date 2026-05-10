@@ -15,7 +15,7 @@ import { defaultLinks, defaultCategories } from '@/utils/defaults'
 import { generateId, getFaviconUrl } from '@/utils/helpers'
 import { useAuth } from '@/composables/useAuth'
 
-export type LinkFilter = 'all' | 'intranet' | 'extranet'
+export type LinkFilter = 'all' | 'intranet' | 'extranet' | 'tunnel' | 'tunnel_intranet' | 'tunnel_extranet'
 
 export const useNavStore = defineStore('nav', () => {
   // ==================== 状态 ====================
@@ -30,11 +30,12 @@ export const useNavStore = defineStore('nav', () => {
   function filterByAddress(links: NavLink[], filter: LinkFilter): NavLink[] {
     if (filter === 'all') return links
     return links.filter(l => {
-      const hasIntranet = !!l.urls.intranet
-      const hasExtranet = !!l.urls.extranet
       switch (filter) {
-        case 'intranet': return hasIntranet
-        case 'extranet': return hasExtranet
+        case 'intranet': return !!l.urls.intranet
+        case 'extranet': return !!l.urls.extranet
+        case 'tunnel': return !!l.urls.tunnel
+        case 'tunnel_intranet': return !!l.urls.tunnel || !!l.urls.intranet
+        case 'tunnel_extranet': return !!l.urls.tunnel || !!l.urls.extranet
         default: return true
       }
     })
@@ -81,7 +82,8 @@ export const useNavStore = defineStore('nav', () => {
       l.description?.toLowerCase().includes(q) ||
       l.tags.some(t => t.toLowerCase().includes(q)) ||
       l.urls.intranet?.toLowerCase().includes(q) ||
-      l.urls.extranet?.toLowerCase().includes(q)
+      l.urls.extranet?.toLowerCase().includes(q) ||
+      l.urls.tunnel?.toLowerCase().includes(q)
     ).sort((a, b) => a.order - b.order)
   })
 
@@ -339,7 +341,8 @@ export const useNavStore = defineStore('nav', () => {
     for (const item of items) {
       const exists = links.value.some(l =>
         l.urls.intranet === item.url ||
-        l.urls.extranet === item.url
+        l.urls.extranet === item.url ||
+        l.urls.tunnel === item.url
       )
       if (!exists) {
         addLink({

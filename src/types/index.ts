@@ -6,8 +6,8 @@
 
 // ==================== 基础枚举类型 ====================
 
-/** 网络类型：内网或外网 */
-export type NetworkType = 'intranet' | 'extranet'
+/** 网络类型：内网、外网或隧道 */
+export type NetworkType = 'intranet' | 'extranet' | 'tunnel'
 
 /** 主题模式：浅色、深色、跟随系统 */
 export type ThemeMode = 'light' | 'dark' | 'auto'
@@ -21,12 +21,14 @@ export type ToolbarButtonId = 'theme' | 'network' | 'add' | 'expand' | 'filter' 
 
 // ==================== 书签相关 ====================
 
-/** 书签的 URL 地址（支持内网和外网双地址） */
+/** 书签的 URL 地址（支持内网、外网和隧道三地址） */
 export interface NavLinkUrl {
   /** 内网地址 */
   intranet?: string
   /** 外网地址 */
   extranet?: string
+  /** 隧道地址 */
+  tunnel?: string
 }
 
 /** 书签/导航链接对象 */
@@ -43,7 +45,7 @@ export interface NavLink {
   description?: string
   /** 所属分类 ID */
   category: string
-  /** 内网/外网 URL */
+  /** 内网/外网/隧道 URL */
   urls: NavLinkUrl
   /** 标签数组（用于搜索和筛选） */
   tags: string[]

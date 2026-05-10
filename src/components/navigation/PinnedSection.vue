@@ -61,6 +61,12 @@ function ctxOpenIntranet() {
   closeCtxMenu()
 }
 
+function ctxOpenTunnel() {
+  const link = navStore.links.find(l => l.id === ctxMenu.value.linkId)
+  if (link?.urls.tunnel) window.open(link.urls.tunnel, '_blank')
+  closeCtxMenu()
+}
+
 function ctxUnpin() {
   const link = navStore.links.find(l => l.id === ctxMenu.value.linkId)
   if (link) navStore.updateLink(link.id, { pinned: false })
@@ -112,6 +118,10 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
         <button v-if="ctxLink?.urls.intranet" class="ctx-item" @click="ctxOpenIntranet">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
           打开内网地址
+        </button>
+        <button v-if="ctxLink?.urls.tunnel" class="ctx-item" @click="ctxOpenTunnel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+          打开隧道地址
         </button>
         <div class="ctx-divider"></div>
         <button class="ctx-item" @click="ctxUnpin">

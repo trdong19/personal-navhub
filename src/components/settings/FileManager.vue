@@ -95,7 +95,7 @@ onMounted(loadFiles)
 </script>
 
 <template>
-  <div class="fm-overlay" @click.self="emit('close')">
+  <div class="fm-overlay" @mousedown.self="emit('close')">
     <div class="fm-modal">
       <div class="fm-header">
         <h3>文件管理</h3>
@@ -152,7 +152,7 @@ onMounted(loadFiles)
     </div>
 
     <Teleport to="body">
-      <div v-if="previewUrl && previewFile" class="fm-preview-overlay" @click.self="closePreview">
+      <div v-if="previewUrl && previewFile" class="fm-preview-overlay" @mousedown.self="closePreview">
         <div class="fm-preview-content">
           <img :src="previewUrl" :alt="previewFile.name" />
           <div class="fm-preview-info">

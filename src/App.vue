@@ -39,6 +39,9 @@ const filterOptions: { label: string; value: LinkFilter }[] = [
   { label: '全部显示', value: 'all' },
   { label: '仅有内网地址', value: 'intranet' },
   { label: '仅有外网地址', value: 'extranet' },
+  { label: '仅有隧道地址', value: 'tunnel' },
+  { label: '隧道 + 内网', value: 'tunnel_intranet' },
+  { label: '隧道 + 外网', value: 'tunnel_extranet' },
 ]
 
 const filterLabel = computed(() => filterOptions.find(o => o.value === navStore.linkFilter)?.label || '全部显示')
@@ -341,7 +344,7 @@ function toggleTools() {
 
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showAddCategoryModal" class="add-cat-overlay" @click.self="showAddCategoryModal = false">
+        <div v-if="showAddCategoryModal" class="add-cat-overlay" @mousedown.self="showAddCategoryModal = false">
           <Transition name="modal-pop" appear>
             <div v-if="showAddCategoryModal" class="add-cat-modal">
               <h3>添加分类</h3>

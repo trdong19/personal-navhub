@@ -472,7 +472,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 </script>
 
 <template>
-  <div class="settings-overlay" @click.self="emit('close')">
+  <div class="settings-overlay" @mousedown.self="emit('close')">
     <div class="settings-modal">
       <div class="settings-header">
         <h3>设置</h3>
@@ -1037,7 +1037,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
       <Teleport to="body">
         <Transition name="fade">
-          <div v-if="showCatSortModal" class="cat-sort-overlay" @click.self="showCatSortModal = false">
+          <div v-if="showCatSortModal" class="cat-sort-overlay" @mousedown.self="showCatSortModal = false">
             <Transition name="modal-pop" appear>
               <div v-if="showCatSortModal" class="cat-sort-modal">
                 <div class="cat-sort-header">
@@ -1076,7 +1076,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </div>
         </Transition>
 
-        <div v-if="showBookmarkImport" class="bookmark-import-overlay" @click.self="showBookmarkImport = false">
+        <div v-if="showBookmarkImport" class="bookmark-import-overlay" @mousedown.self="showBookmarkImport = false">
           <div class="bookmark-import-modal">
             <div class="bi-header">
               <h3>导入书签</h3>
@@ -1119,7 +1119,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
       />
 
       <Transition name="fade">
-        <div v-if="showResetDialog" class="reset-overlay" @click.self="showResetDialog = false">
+        <div v-if="showResetDialog" class="reset-overlay" @mousedown.self="showResetDialog = false">
           <Transition name="modal-pop" appear>
             <div v-if="showResetDialog" class="reset-modal">
               <h3>重置设置</h3>

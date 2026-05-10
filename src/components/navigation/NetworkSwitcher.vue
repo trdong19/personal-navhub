@@ -3,6 +3,12 @@ import { useNetworkStore } from '@/stores/network'
 
 const networkStore = useNetworkStore()
 
+const labelMap: Record<string, string> = {
+  intranet: '内',
+  extranet: '外',
+  tunnel: '隧',
+}
+
 function toggle() {
   networkStore.toggle()
 }
@@ -15,7 +21,7 @@ function toggle() {
     @click="toggle"
     :title="`当前: ${networkStore.statusText}，点击切换`"
   >
-    <span class="switcher-label">{{ networkStore.currentType === 'intranet' ? '内' : '外' }}</span>
+    <span class="switcher-label">{{ labelMap[networkStore.currentType] || '外' }}</span>
   </button>
 </template>
 
@@ -58,6 +64,18 @@ function toggle() {
   color: white;
   border-color: #3b82f6;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px);
+}
+
+.network-switcher.tunnel {
+  color: #f59e0b;
+}
+
+.network-switcher.tunnel:hover {
+  background: #f59e0b;
+  color: white;
+  border-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
   transform: translateY(-2px);
 }
 

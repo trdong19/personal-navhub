@@ -38,6 +38,7 @@ const form = ref({
   category: '',
   intranetUrl: '',
   extranetUrl: '',
+  tunnelUrl: '',
   tags: '',
   pinned: false,
   color: '',
@@ -51,7 +52,7 @@ const iconPreviewFailed = ref(false)
 
 const iconSource = computed(() => {
   if (form.value.iconUrl) return form.value.iconUrl
-  const url = form.value.extranetUrl || form.value.intranetUrl
+  const url = form.value.extranetUrl || form.value.intranetUrl || form.value.tunnelUrl
   if (url) return getFaviconUrl(url)
   return ''
 })
@@ -85,7 +86,7 @@ function handleIconLoad() {
 }
 
 function handleAutoFavicon() {
-  const url = form.value.extranetUrl || form.value.intranetUrl
+  const url = form.value.extranetUrl || form.value.intranetUrl || form.value.tunnelUrl
   if (url) {
     try {
       const { hostname } = new URL(url)
@@ -109,6 +110,7 @@ onMounted(() => {
         category: link.category,
         intranetUrl: link.urls.intranet || '',
         extranetUrl: link.urls.extranet || '',
+        tunnelUrl: link.urls.tunnel || '',
         tags: link.tags.join(', '),
         pinned: link.pinned,
         color: link.color || '',
@@ -129,8 +131,9 @@ function handleSubmit() {
   const urls: NavLink['urls'] = {}
   if (form.value.intranetUrl.trim()) urls.intranet = form.value.intranetUrl.trim()
   if (form.value.extranetUrl.trim()) urls.extranet = form.value.extranetUrl.trim()
+  if (form.value.tunnelUrl.trim()) urls.tunnel = form.value.tunnelUrl.trim()
 
-  if (!urls.intranet && !urls.extranet) {
+  if (!urls.intranet && !urls.extranet && !urls.tunnel) {
     alert('请至少填写一个网址')
     return
   }
@@ -168,7 +171,7 @@ function handleSubmit() {
 </script>
 
 <template>
-  <div class="editor-overlay" @click.self="emit('close')">
+  <div class="editor-overlay" @mousedown.self="emit('close')">
     <div class="editor-modal">
       <div class="editor-header">
         <h3>{{ props.linkId ? '编辑链接' : '添加链接' }}</h3>
@@ -244,6 +247,11 @@ function handleSubmit() {
         <div class="form-row">
           <label class="form-label">外网地址</label>
           <input v-model="form.extranetUrl" type="url" placeholder="https://..." class="form-input" />
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">隧道地址</label>
+          <input v-model="form.tunnelUrl" type="url" placeholder="https://tunnel.example.com/..." class="form-input" />
         </div>
 
         <div class="form-row">

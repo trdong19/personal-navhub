@@ -35,7 +35,7 @@ function formatTime(ts: number) {
 </script>
 
 <template>
-  <div class="stats-overlay" @click.self="emit('close')">
+  <div class="stats-overlay" @mousedown.self="emit('close')">
     <div class="stats-modal">
       <div class="stats-header">
         <h3>访问统计</h3>

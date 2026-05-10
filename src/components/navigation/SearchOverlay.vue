@@ -101,7 +101,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="search-overlay" @click.self="emit('close')">
+  <div class="search-overlay" @mousedown.self="emit('close')">
     <div class="search-modal">
       <div class="search-header">
         <div class="search-input-wrapper">

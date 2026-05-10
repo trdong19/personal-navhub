@@ -203,6 +203,12 @@ function ctxOpenIntranet() {
   closeCtxMenu()
 }
 
+function ctxOpenTunnel() {
+  const link = navStore.links.find(l => l.id === ctxMenu.value.linkId)
+  if (link?.urls.tunnel) window.open(link.urls.tunnel, '_blank')
+  closeCtxMenu()
+}
+
 function ctxTogglePin() {
   const link = navStore.links.find(l => l.id === ctxMenu.value.linkId)
   if (link) navStore.updateLink(link.id, { pinned: !link.pinned })
@@ -378,6 +384,10 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
           打开内网地址
         </button>
+        <button v-if="ctxLink?.urls.tunnel" class="ctx-item" @click="ctxOpenTunnel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+          打开隧道地址
+        </button>
         <div class="ctx-divider"></div>
         <button class="ctx-item" @click="ctxTogglePin">
           <svg width="14" height="14" viewBox="0 0 24 24" :fill="ctxLink?.pinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>
@@ -396,7 +406,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showAddCategory" class="add-cat-overlay" @click.self="showAddCategory = false">
+        <div v-if="showAddCategory" class="add-cat-overlay" @mousedown.self="showAddCategory = false">
           <Transition name="modal-pop" appear>
             <div v-if="showAddCategory" class="add-cat-modal">
               <h3>添加{{ newCatParentId ? '子' : '' }}分类</h3>
@@ -418,7 +428,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
       </Transition>
 
       <Transition name="fade">
-        <div v-if="showDeleteConfirm" class="add-cat-overlay" @click.self="cancelDeleteCategory">
+        <div v-if="showDeleteConfirm" class="add-cat-overlay" @mousedown.self="cancelDeleteCategory">
           <Transition name="modal-pop" appear>
             <div v-if="showDeleteConfirm" class="add-cat-modal">
               <h3>删除分类</h3>

@@ -197,7 +197,7 @@ defineExpose({ openAdminPanel })
     </div>
 
     <Teleport to="body">
-      <div v-if="showAuthModal" ref="authModalRef" class="auth-modal-overlay" @click="handleAuthModalBackdrop">
+      <div v-if="showAuthModal" ref="authModalRef" class="auth-modal-overlay" @mousedown="handleAuthModalBackdrop">
         <div class="auth-modal">
           <button v-if="auth.isLoggedIn.value" class="auth-modal-close" @click="closeAuthModal">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -253,7 +253,7 @@ defineExpose({ openAdminPanel })
 
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showAdminPanel" class="admin-overlay" @click.self="showAdminPanel = false">
+        <div v-if="showAdminPanel" class="admin-overlay" @mousedown.self="showAdminPanel = false">
           <Transition name="modal-pop" appear>
             <div v-if="showAdminPanel" class="admin-modal">
               <div class="admin-header">

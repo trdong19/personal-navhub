@@ -29,9 +29,12 @@ const settingsStore = useSettingsStore()
 const currentUrl = computed(() => {
   const { urls } = props.link
   if (networkStore.currentType === 'intranet') {
-    return urls.intranet || urls.extranet || '#'
+    return urls.intranet || urls.extranet || urls.tunnel || '#'
   }
-  return urls.extranet || urls.intranet || '#'
+  if (networkStore.currentType === 'tunnel') {
+    return urls.tunnel || urls.extranet || urls.intranet || '#'
+  }
+  return urls.extranet || urls.intranet || urls.tunnel || '#'
 })
 
 const faviconCandidates = computed(() => {
