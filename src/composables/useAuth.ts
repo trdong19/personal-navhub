@@ -522,15 +522,24 @@ export function useAuth() {
       const linksData = localStorage.getItem('nav_navLinks')
       const categoriesData = localStorage.getItem('nav_navCategories')
       const recordsData = localStorage.getItem('nav_accessRecords')
+      const links: any[] = linksData ? JSON.parse(linksData) : []
+      for (const link of links) {
+        if (link.iconUrl && typeof link.iconUrl === 'string' && link.iconUrl.startsWith('data:')) {
+          link.iconUrl = ''
+        }
+        if (link.cachedIconData && typeof link.cachedIconData === 'string' && link.cachedIconData.startsWith('data:')) {
+          delete link.cachedIconData
+        }
+      }
       const payload = JSON.stringify({
         action: 'sync',
         data: {
           settings: settingsData ? JSON.parse(settingsData) : null,
-          links: linksData ? JSON.parse(linksData) : [],
+          links,
           categories: categoriesData ? JSON.parse(categoriesData) : [],
           accessRecords: recordsData ? JSON.parse(recordsData) : [],
           updatedAt: Date.now(),
-          version: 0,
+          version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
         },
       })
       const blob = new Blob([payload], { type: 'application/json' })
@@ -540,6 +549,18 @@ export function useAuth() {
 
   /** 是否为管理员（计算属性，响应式） */
   const isAdmin = computed(() => role.value === 'admin')
+
+  async function checkServerVersion(): Promise<number | null> {
+    if (!token.value) return null
+    try {
+      const res = await fetch(`${getApiBase()}/check-version`, { headers: headers() })
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.version || 0
+    } catch {
+      return null
+    }
+  }
 
   // ==================== 管理员 API ====================
 
@@ -651,6 +672,7 @@ export function useAuth() {
     debouncePush,
     flushPush,
     beaconPush,
+    checkServerVersion,
     changePassword,
     adminGetUsers,
     adminAddUser,

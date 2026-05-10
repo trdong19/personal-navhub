@@ -186,10 +186,14 @@ onMounted(async () => {
   if (auth.token.value) {
     const valid = await auth.checkSession()
     if (valid) {
-      const ok = await auth.pull()
-      if (ok) {
-        settingsStore.reloadFromStorage()
-        navStore.reloadFromStorage()
+      const serverVersion = await auth.checkServerVersion()
+      const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+      if (serverVersion !== null && serverVersion > cachedVersion) {
+        const ok = await auth.pull()
+        if (ok) {
+          settingsStore.reloadFromStorage()
+          navStore.reloadFromStorage()
+        }
       }
     }
   }
@@ -232,6 +236,19 @@ function handleRemoteUpdate() {
   navStore.reloadFromStorage()
 }
 
+async function handleLoginSuccess() {
+  const serverVersion = await auth.checkServerVersion()
+  const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+  if (serverVersion !== null && serverVersion > cachedVersion) {
+    const ok = await auth.pull()
+    if (ok) {
+      settingsStore.reloadFromStorage()
+      navStore.reloadFromStorage()
+    }
+  }
+  navStore.batchFetchFavicons()
+}
+
 function handleOutsideClick(e: MouseEvent) {
   const fab = document.querySelector('.fab-container')
   if (fab && !fab.contains(e.target as Node)) {
@@ -268,7 +285,7 @@ function toggleTools() {
       @open-settings="showSettings = true"
       @open-editor="openEditor()"
       @open-stats="showStats = true"
-      @login-success="navStore.batchFetchFavicons()"
+      @login-success="handleLoginSuccess"
     />
 
     <Transition name="slide-down">
