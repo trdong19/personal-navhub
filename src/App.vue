@@ -115,7 +115,8 @@ function toggleUserMenu() {
 }
 
 function handleUserMenuOutside(e: MouseEvent) {
-  if (userMenuRef.value && !userMenuRef.value.contains(e.target as Node)) {
+  const userEl = Array.isArray(userMenuRef.value) ? userMenuRef.value[0] : userMenuRef.value
+  if (userEl && !userEl.contains(e.target as Node)) {
     showUserMenu.value = false
   }
 }
@@ -159,7 +160,8 @@ function handleOutsideClick(e: MouseEvent) {
   if (fab && !fab.contains(e.target as Node)) {
     fabOpen.value = false
   }
-  if (filterPanelRef.value && !filterPanelRef.value.contains(e.target as Node)) {
+  const filterEl = Array.isArray(filterPanelRef.value) ? filterPanelRef.value[0] : filterPanelRef.value
+  if (filterEl && !filterEl.contains(e.target as Node)) {
     filterPanelOpen.value = false
   }
 }
