@@ -141,10 +141,18 @@ const cardClass = computed(() => [
     'has-custom-color': !!props.link.color,
     'card-dragging': isDragging.value,
     'card-drag-over': isDragOver.value,
+    'selected': isSelected.value,
+    'selection-mode': navStore.selectionMode,
   },
 ])
 
+const isSelected = computed(() => navStore.selectedLinkIds.has(props.link.id))
+
 function handleClick() {
+  if (navStore.selectionMode) {
+    navStore.toggleLinkSelection(props.link.id)
+    return
+  }
   if (currentUrl.value === '#') return
   navStore.recordAccess(props.link.id, networkStore.currentType)
   window.open(currentUrl.value, '_blank')
@@ -218,6 +226,11 @@ function handleDragEnd() {
     @dragleave="handleDragLeave"
     @dragend="handleDragEnd"
   >
+    <Transition name="check-fade">
+      <div v-if="navStore.selectionMode" class="selection-check" :class="{ checked: isSelected }">
+        <svg v-if="isSelected" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </Transition>
     <div class="card-content">
       <div class="card-icon">
         <img
@@ -425,6 +438,51 @@ function handleDragEnd() {
   .card-desc {
     font-size: 11px;
   }
+}
+
+.nav-card.selection-mode {
+  cursor: pointer;
+}
+
+.nav-card.selection-mode:hover {
+  transform: translateY(-1px);
+}
+
+.nav-card.selected {
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.2);
+}
+
+.selection-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.selection-check.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.check-fade-enter-active,
+.check-fade-leave-active {
+  transition: all 0.15s ease;
+}
+
+.check-fade-enter-from,
+.check-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
 }
 
 @media (max-width: 480px) {

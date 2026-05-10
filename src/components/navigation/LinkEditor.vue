@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import type { NavLink } from '@/types'
 import { getFaviconUrl } from '@/utils/helpers'
+import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
   linkId: string | null
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const navStore = useNavStore()
+const toast = useToast()
 
 const cardColors = [
   '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
@@ -66,7 +68,7 @@ function handleIconUpload(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
   if (file.size > 2 * 1024 * 1024) {
-    alert('图标文件不能超过 2MB')
+    toast.error('图标文件不能超过 2MB')
     return
   }
   const reader = new FileReader()
@@ -124,7 +126,7 @@ onMounted(() => {
 
 function handleSubmit() {
   if (!form.value.title.trim()) {
-    alert('请输入标题')
+    toast.warning('请输入标题')
     return
   }
 
@@ -134,12 +136,12 @@ function handleSubmit() {
   if (form.value.tunnelUrl.trim()) urls.tunnel = form.value.tunnelUrl.trim()
 
   if (!urls.intranet && !urls.extranet && !urls.tunnel) {
-    alert('请至少填写一个网址')
+    toast.warning('请至少填写一个网址')
     return
   }
 
   if (!form.value.category) {
-    alert('请选择一个分类')
+    toast.warning('请选择一个分类')
     return
   }
 
@@ -163,6 +165,13 @@ function handleSubmit() {
   if (props.linkId) {
     navStore.updateLink(props.linkId, data)
   } else {
+    const exists = navStore.links.some(
+      l => l.title === data.title && l.category === data.category
+    )
+    if (exists) {
+      toast.warning('该分类下已存在同名链接')
+      return
+    }
     navStore.addLink(data as Omit<NavLink, 'id' | 'accessCount' | 'lastAccessed' | 'createdAt' | 'order'>)
   }
 

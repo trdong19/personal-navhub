@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useNavStore } from '@/stores/nav'
 import { getEngineFaviconCandidates } from '@/utils/helpers'
 import { animateDropdown } from '@/composables/useAnimation'
+import { pinyinMatch } from '@/utils/pinyin'
 
 const settingsStore = useSettingsStore()
 const navStore = useNavStore()
@@ -21,9 +22,9 @@ const suggestions = computed(() => {
   const q = query.value.toLowerCase()
   return navStore.links
     .filter(link =>
-      link.title.toLowerCase().includes(q) ||
+      pinyinMatch(link.title, q) ||
       link.description?.toLowerCase().includes(q) ||
-      link.tags.some(tag => tag.toLowerCase().includes(q))
+      link.tags.some(tag => pinyinMatch(tag, q))
     )
     .slice(0, 8)
 })

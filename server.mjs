@@ -5,10 +5,16 @@
  */
 import http from 'node:http'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-// ==================== 内存数据存储 ====================
-// 所有数据存储在内存中（Map），服务重启后数据会丢失
-// 生产环境应替换为数据库持久化存储
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const DATA_DIR = path.join(__dirname, 'data')
+const DATA_FILE = path.join(DATA_DIR, 'server-data.json')
+
+// ==================== 文件持久化存储 ====================
 
 /** 用户数据 Map: key=用户名, value={hash, salt, createdAt, role} */
 const users = new Map()
@@ -21,6 +27,48 @@ const resources = new Map()
 
 /** 注册功能是否开启（管理员可控制） */
 let registrationEnabled = true
+
+let saveTimer = null
+
+function loadFromDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+    if (!fs.existsSync(DATA_FILE)) return
+    const raw = fs.readFileSync(DATA_FILE, 'utf-8')
+    const data = JSON.parse(raw)
+    if (data.users) for (const [k, v] of data.users) users.set(k, v)
+    if (data.tokens) for (const [k, v] of data.tokens) tokens.set(k, v)
+    if (data.dataStore) for (const [k, v] of data.dataStore) dataStore.set(k, v)
+    if (data.resources) for (const [k, v] of data.resources) resources.set(k, v)
+    if (data.registrationEnabled !== undefined) registrationEnabled = data.registrationEnabled
+    console.log(`[持久化] 已加载: ${users.size}用户, ${dataStore.size}数据, ${resources.size}资源`)
+  } catch (err) {
+    console.error('[持久化] 加载失败:', err.message)
+  }
+}
+
+function saveToDiskDebounced() {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(saveToDisk, 2000)
+}
+
+function saveToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+    const data = {
+      users: [...users.entries()],
+      tokens: [...tokens.entries()],
+      dataStore: [...dataStore.entries()],
+      resources: [...resources.entries()],
+      registrationEnabled,
+    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data), 'utf-8')
+  } catch (err) {
+    console.error('[持久化] 保存失败:', err.message)
+  }
+}
+
+loadFromDisk()
 
 // ==================== 初始化 ====================
 
@@ -170,6 +218,15 @@ const server = http.createServer(async (req, res) => {
       return json(res, { data })
     }
 
+    // 轻量版本检查：只返回 version 和 updatedAt，用于多端同步检测
+    if (action === 'check-version') {
+      const username = getTokenUser(req)
+      if (!username) return json(res, { error: '未登录' }, 401)
+      const data = dataStore.get(username)
+      if (!data) return json(res, { version: 0, updatedAt: 0 })
+      return json(res, { version: data.version || 0, updatedAt: data.updatedAt || 0 })
+    }
+
     return json(res, { error: 'Not found' }, 404)
   }
 
@@ -205,6 +262,7 @@ const server = http.createServer(async (req, res) => {
 
       const token = randomHex(32)
       tokens.set(token, username)
+      saveToDiskDebounced()
 
       console.log(`[注册] ${username} role=${role}`)
       return json(res, { success: true, token, username, role })
@@ -226,6 +284,7 @@ const server = http.createServer(async (req, res) => {
 
       const token = randomHex(32)
       tokens.set(token, username)
+      saveToDiskDebounced()
 
       console.log(`[登录] ${username} rememberMe=${rememberMe}`)
       return json(res, { success: true, token, username, role: user.role || 'user' })
@@ -237,13 +296,25 @@ const server = http.createServer(async (req, res) => {
       const username = getTokenUser(req)
       if (!username) return json(res, { error: '登录已过期' }, 401)
 
+      const existing = dataStore.get(username)
+      const clientVersion = body.data?.version || 0
+
+      // 版本冲突检测：客户端版本落后于服务端，说明其他设备已更新
+      if (existing && clientVersion > 0 && clientVersion < existing.version) {
+        return json(res, {
+          error: '数据冲突，请先拉取最新数据',
+          conflict: true,
+          serverVersion: existing.version,
+        }, 409)
+      }
+
       const syncData = {
         settings: body.data.settings,
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
-        version: (body.data?.version || 0) + 1,
+        version: (existing?.version || 0) + 1,
       }
 
       // 保存资源数据（背景图 dataUrl、favicon dataUrl、图标 dataUrl 等）
@@ -254,9 +325,34 @@ const server = http.createServer(async (req, res) => {
       }
 
       dataStore.set(username, syncData)
+      saveToDiskDebounced()
 
       console.log(`[同步推送] ${username}`)
       return json(res, { success: true, version: syncData.version, updatedAt: syncData.updatedAt })
+    }
+
+    // ---------- Beacon 同步（页面卸载时的数据保底推送）----------
+    if (action === 'sync-beacon') {
+      const url = new URL(req.url, 'http://localhost')
+      const beaconToken = url.searchParams.get('token')
+      const username = beaconToken ? tokens.get(beaconToken) : null
+      if (!username) {
+        res.writeHead(204)
+        return res.end()
+      }
+      const syncData = {
+        settings: body.data.settings,
+        links: body.data.links || [],
+        categories: body.data.categories || [],
+        accessRecords: body.data.accessRecords || [],
+        updatedAt: Date.now(),
+        version: (body.data?.version || 0) + 1,
+      }
+      dataStore.set(username, syncData)
+      saveToDiskDebounced()
+      console.log(`[Beacon同步] ${username}`)
+      res.writeHead(204)
+      return res.end()
     }
 
     // ---------- 单独上传资源 ----------
@@ -269,6 +365,7 @@ const server = http.createServer(async (req, res) => {
       if (data.length > MAX_BODY_SIZE) return json(res, { error: '资源数据过大' }, 413)
 
       resources.set(getResourceKey(username, id), data)
+      saveToDiskDebounced()
 
       console.log(`[资源上传] ${username} ${id} (${Math.round(data.length / 1024)}KB)`)
       return json(res, { success: true, id })
@@ -324,6 +421,7 @@ const server = http.createServer(async (req, res) => {
       const auth = req.headers.authorization || ''
       const token = auth.replace('Bearer ', '')
       if (token) tokens.delete(token)
+      saveToDiskDebounced()
       return json(res, { success: true })
     }
 
@@ -365,6 +463,7 @@ const server = http.createServer(async (req, res) => {
           settings: null, links: [], categories: [], accessRecords: [],
           updatedAt: Date.now(), version: 1,
         })
+        saveToDiskDebounced()
 
         console.log(`[管理员添加用户] ${username} -> ${newUser}`)
         return json(res, { success: true, username: newUser })
@@ -379,14 +478,13 @@ const server = http.createServer(async (req, res) => {
 
         users.delete(targetUser)
         dataStore.delete(targetUser)
-        // 清理该用户的所有 token
         for (const [token, uname] of tokens.entries()) {
           if (uname === targetUser) tokens.delete(token)
         }
-        // 清理该用户的所有资源
         for (const key of resources.keys()) {
           if (key.startsWith(targetUser + ':')) resources.delete(key)
         }
+        saveToDiskDebounced()
 
         console.log(`[管理员删除用户] ${username} -> ${targetUser}`)
         return json(res, { success: true })
@@ -395,6 +493,7 @@ const server = http.createServer(async (req, res) => {
       // 切换注册功能开关
       if (subAction === 'toggle-registration') {
         registrationEnabled = !registrationEnabled
+        saveToDiskDebounced()
         console.log(`[管理员] 注册功能: ${registrationEnabled ? '开启' : '关闭'}`)
         return json(res, { success: true, registrationEnabled })
       }
@@ -425,6 +524,7 @@ const server = http.createServer(async (req, res) => {
       const newSalt = randomHex(16)
       const newHash = hashPassword(newPassword, newSalt)
       users.set(username, { ...user, hash: newHash, salt: newSalt })
+      saveToDiskDebounced()
       console.log(`[改密] ${username}`)
       return json(res, { success: true })
     }

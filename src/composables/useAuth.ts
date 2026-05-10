@@ -52,10 +52,14 @@ const authStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 const authMessage = ref('')
 /** 是否已登录（模块级别，全局共享） */
 const isLoggedIn = ref(!!token.value)
+/** 初始 session 验证是否已完成，防止页面加载时闪烁 */
+const authReady = ref(false)
 /** 自动同步的防抖定时器 */
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 /** 上次成功推送的数据哈希，用于前端去重 */
 let lastPushHash = ''
+/** 本地缓存的服务端版本号，用于 push 时携带版本做冲突检测 */
+const CACHED_VERSION_KEY = 'nav_cached_server_version'
 
 /**
  * 获取 API 基础路径
@@ -116,6 +120,7 @@ export function useAuth() {
     localStorage.removeItem(PUSH_RES_HASH_KEY)
     localStorage.removeItem(PULL_RES_HASH_KEY)
     localStorage.removeItem('nav_cached_resources')
+    localStorage.removeItem(CACHED_VERSION_KEY)
     isLoggedIn.value = false
     lastPushHash = ''
   }
@@ -290,7 +295,7 @@ export function useAuth() {
         categories,
         accessRecords,
         updatedAt: Date.now(),
-        version: 0,
+        version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
       }
 
       if (Object.keys(resources).length > 0) {
@@ -309,9 +314,27 @@ export function useAuth() {
         clearAuth()
         return false
       }
+      // 版本冲突：其他设备已更新，先拉取再重推
+      if (res.status === 409) {
+        await pull()
+        data.version = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
+        const retryRes = await fetch(`${getApiBase()}/sync`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({ data }),
+        })
+        if (retryRes.ok) {
+          const retryResult = await safeJson(retryRes)
+          localStorage.setItem(CACHED_VERSION_KEY, String(retryResult.version))
+          lastPushHash = coreHash
+          window.dispatchEvent(new CustomEvent('nav-remote-update'))
+        }
+        return retryRes.ok
+      }
       const result = await safeJson(res)
       if (res.ok) {
         lastPushHash = coreHash
+        localStorage.setItem(CACHED_VERSION_KEY, String(result.version))
       }
       return res.ok
     } catch {
@@ -448,6 +471,11 @@ export function useAuth() {
 
       lastPushHash = ''
 
+      // 更新缓存的版本号
+      if (result.version) {
+        localStorage.setItem(CACHED_VERSION_KEY, String(result.version))
+      }
+
       return true
     } catch (err: any) {
       return false
@@ -463,6 +491,51 @@ export function useAuth() {
     if (!token.value) return
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => { push() }, 2000)
+  }
+
+  /**
+   * 立即取消防抖并执行 push
+   * 用于页面即将卸载或隐藏时确保数据及时同步
+   */
+  function flushPush() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+    if (token.value) {
+      push()
+    }
+  }
+
+  /**
+   * 使用 navigator.sendBeacon 同步发送数据
+   * 在 beforeunload 中调用，即使页面正在关闭也能发出请求
+   */
+  function beaconPush() {
+    if (!token.value) return
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+    try {
+      const settingsData = localStorage.getItem('nav_userSettings')
+      const linksData = localStorage.getItem('nav_navLinks')
+      const categoriesData = localStorage.getItem('nav_navCategories')
+      const recordsData = localStorage.getItem('nav_accessRecords')
+      const payload = JSON.stringify({
+        action: 'sync',
+        data: {
+          settings: settingsData ? JSON.parse(settingsData) : null,
+          links: linksData ? JSON.parse(linksData) : [],
+          categories: categoriesData ? JSON.parse(categoriesData) : [],
+          accessRecords: recordsData ? JSON.parse(recordsData) : [],
+          updatedAt: Date.now(),
+          version: 0,
+        },
+      })
+      const blob = new Blob([payload], { type: 'application/json' })
+      navigator.sendBeacon(`${getApiBase()}/sync-beacon?token=${token.value}`, blob)
+    } catch {}
   }
 
   /** 是否为管理员（计算属性，响应式） */
@@ -565,6 +638,7 @@ export function useAuth() {
     username,
     role,
     isLoggedIn,
+    authReady,
     isAdmin,
     authStatus,
     authMessage,
@@ -575,6 +649,8 @@ export function useAuth() {
     push,
     pull,
     debouncePush,
+    flushPush,
+    beaconPush,
     changePassword,
     adminGetUsers,
     adminAddUser,

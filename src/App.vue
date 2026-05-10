@@ -11,15 +11,21 @@ import NetworkSwitcher from '@/components/navigation/NetworkSwitcher.vue'
 import SettingsPanel from '@/components/settings/SettingsPanel.vue'
 import LinkEditor from '@/components/navigation/LinkEditor.vue'
 import StatsPanel from '@/components/navigation/StatsPanel.vue'
+import SearchOverlay from '@/components/navigation/SearchOverlay.vue'
+import ToastContainer from '@/components/common/ToastContainer.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { useToast } from '@/composables/useToast'
 
 const settingsStore = useSettingsStore()
 const navStore = useNavStore()
 const auth = useAuth()
+const toast = useToast()
 
 const showSettings = ref(false)
 const showLinkEditor = ref(false)
 const editingLinkId = ref<string | null>(null)
 const showStats = ref(false)
+const showSearchOverlay = ref(false)
 const scrollY = ref(0)
 const showBackTop = computed(() => scrollY.value > 400)
 
@@ -30,6 +36,7 @@ const headerRef = ref<InstanceType<typeof AppHeader> | null>(null)
 const showUserMenu = ref(false)
 const userMenuRef = ref<HTMLElement | null>(null)
 const allExpanded = computed(() => navStore.categories.length > 0 && navStore.categories.every(c => !c.collapsed))
+const isEmpty = computed(() => navStore.categories.length === 0 && navStore.links.length === 0)
 
 const filterPanelOpen = ref(false)
 const filterPanelRef = ref<HTMLElement | null>(null)
@@ -40,6 +47,7 @@ const filterOptions: { label: string; value: LinkFilter }[] = [
   { label: '仅有内网地址', value: 'intranet' },
   { label: '仅有外网地址', value: 'extranet' },
   { label: '仅有隧道地址', value: 'tunnel' },
+  { label: '内网 + 外网', value: 'intranet_extranet' },
   { label: '隧道 + 内网', value: 'tunnel_intranet' },
   { label: '隧道 + 外网', value: 'tunnel_extranet' },
 ]
@@ -58,6 +66,8 @@ function toggleTheme() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
+  
   if (e.key === 'Escape') {
     showSettings.value = false
     showLinkEditor.value = false
@@ -66,6 +76,17 @@ function handleKeydown(e: KeyboardEvent) {
     fabOpen.value = false
     filterPanelOpen.value = false
     toolsExpanded.value = false
+    showSearchOverlay.value = false
+  }
+  
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    showSearchOverlay.value = true
+  }
+  
+  if (e.key === '/' && !isInputFocused && !showSettings.value && !showLinkEditor.value && !showStats.value) {
+    e.preventDefault()
+    showSearchOverlay.value = true
   }
 }
 
@@ -92,6 +113,13 @@ function openAddCategory() {
 function confirmAddCategory() {
   const name = newCatName.value.trim()
   if (!name) return
+  const exists = navStore.categories.some(
+    c => c.name === name
+  )
+  if (exists) {
+    toast.warning('分类名称已存在')
+    return
+  }
   navStore.addCategory(name, '📁', '#6366f1')
   showAddCategoryModal.value = false
   newCatName.value = ''
@@ -103,6 +131,29 @@ function toggleFab() {
 
 function closeFab() {
   fabOpen.value = false
+}
+
+const showBatchMoveModal = ref(false)
+const batchMoveCategoryId = ref('')
+
+function handleBatchDelete() {
+  const count = navStore.selectedLinkIds.size
+  if (count === 0) return
+  const deleted = navStore.batchDeleteLinks()
+  toast.success(`已删除 ${deleted} 个链接`)
+}
+
+function openBatchMove() {
+  if (navStore.selectedLinkIds.size === 0) return
+  batchMoveCategoryId.value = ''
+  showBatchMoveModal.value = true
+}
+
+function confirmBatchMove() {
+  if (!batchMoveCategoryId.value) return
+  const moved = navStore.batchMoveLinks(batchMoveCategoryId.value)
+  toast.success(`已移动 ${moved} 个链接`)
+  showBatchMoveModal.value = false
 }
 
 function toggleExpandCollapse() {
@@ -142,11 +193,15 @@ onMounted(async () => {
       }
     }
   }
+  auth.authReady.value = true
 
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('scroll', handleScroll, { passive: true })
   document.addEventListener('click', handleOutsideClick)
   document.addEventListener('click', handleUserMenuOutside)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('nav-remote-update', handleRemoteUpdate)
 
   navStore.batchFetchFavicons()
 })
@@ -156,7 +211,26 @@ onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
   document.removeEventListener('click', handleOutsideClick)
   document.removeEventListener('click', handleUserMenuOutside)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('nav-remote-update', handleRemoteUpdate)
 })
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    auth.flushPush()
+    auth.beaconPush()
+  }
+}
+
+function handleBeforeUnload() {
+  auth.beaconPush()
+}
+
+function handleRemoteUpdate() {
+  settingsStore.reloadFromStorage()
+  navStore.reloadFromStorage()
+}
 
 function handleOutsideClick(e: MouseEvent) {
   const fab = document.querySelector('.fab-container')
@@ -186,7 +260,9 @@ function toggleTools() {
 </script>
 
 <template>
-  <div class="app-container">
+  <div v-if="!auth.authReady.value" class="auth-loading-screen"></div>
+  <div v-else class="app-container">
+    <ToastContainer />
     <AppHeader
       ref="headerRef"
       @open-settings="showSettings = true"
@@ -195,13 +271,36 @@ function toggleTools() {
       @login-success="navStore.batchFetchFavicons()"
     />
 
-    <main class="main-content">
+    <Transition name="slide-down">
+      <div v-if="auth.isLoggedIn.value && navStore.selectionMode" class="batch-bar">
+        <div class="batch-info">
+          <span class="batch-count">已选择 {{ navStore.selectedLinkIds.size }} 个</span>
+          <button class="batch-link" @click="navStore.selectAllLinks()">全选</button>
+        </div>
+        <div class="batch-actions">
+          <button class="batch-btn move" :disabled="navStore.selectedLinkIds.size === 0" @click="openBatchMove">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            移动
+          </button>
+          <button class="batch-btn delete" :disabled="navStore.selectedLinkIds.size === 0" @click="handleBatchDelete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            删除
+          </button>
+          <button class="batch-btn cancel" @click="navStore.exitSelectionMode()">取消</button>
+        </div>
+      </div>
+    </Transition>
+
+    <main v-if="auth.isLoggedIn.value" class="main-content">
       <div class="content-wrapper">
         <div class="search-wrapper">
           <SearchBar />
         </div>
-        <PinnedSection @open-editor="openEditor" />
-        <CategorySection @open-editor="openEditor" />
+        <EmptyState v-if="isEmpty" @add-category="openAddCategory" @open-settings="showSettings = true" />
+        <template v-else>
+          <PinnedSection @open-editor="openEditor" />
+          <CategorySection @open-editor="openEditor" />
+        </template>
       </div>
     </main>
 
@@ -227,7 +326,14 @@ function toggleTools() {
       />
     </Transition>
 
-    <div class="floating-controls">
+    <SearchOverlay
+      v-if="showSearchOverlay"
+      @close="showSearchOverlay = false"
+      @open-settings="showSettings = true"
+      @open-stats="showStats = true"
+    />
+
+    <div v-if="auth.isLoggedIn.value" class="floating-controls">
       <Transition name="tool-expand">
         <div v-if="toolsExpanded" class="tools-panel">
           <template v-for="item in visibleToolbarItems" :key="item.id">
@@ -297,7 +403,7 @@ function toggleTools() {
             <div v-else-if="item.id === 'filter'" ref="filterPanelRef" class="filter-container">
               <button
                 class="float-btn filter-btn"
-                :class="{ active: navStore.linkFilter !== 'all' }"
+                :class="{ active: navStore.linkFilter !== 'all' || navStore.tagFilter.length > 0 }"
                 title="链接筛选"
                 @click="toggleFilterPanel"
               >
@@ -319,6 +425,28 @@ function toggleTools() {
                     <span class="filter-radio" v-else></span>
                     {{ opt.label }}
                   </button>
+                  <template v-if="navStore.allTags.length > 0">
+                    <div class="filter-divider"></div>
+                    <div class="filter-title">标签筛选</div>
+                    <div class="tag-filter-list">
+                      <button
+                        v-for="tag in navStore.allTags"
+                        :key="tag"
+                        class="tag-chip"
+                        :class="{ active: navStore.tagFilter.includes(tag) }"
+                        @click="navStore.toggleTagFilter(tag)"
+                      >
+                        {{ tag }}
+                      </button>
+                    </div>
+                    <button
+                      v-if="navStore.tagFilter.length > 0"
+                      class="filter-clear-tags"
+                      @click="navStore.setTagFilter([])"
+                    >
+                      清除标签筛选
+                    </button>
+                  </template>
                 </div>
               </Transition>
             </div>
@@ -359,6 +487,26 @@ function toggleTools() {
               <div class="add-cat-actions">
                 <button class="add-cat-cancel" @click="showAddCategoryModal = false">取消</button>
                 <button class="add-cat-confirm" @click="confirmAddCategory" :disabled="!newCatName.trim()">确定</button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showBatchMoveModal" class="add-cat-overlay" @mousedown.self="showBatchMoveModal = false">
+          <Transition name="modal-pop" appear>
+            <div v-if="showBatchMoveModal" class="add-cat-modal">
+              <h3>移动到分类</h3>
+              <select v-model="batchMoveCategoryId" class="batch-move-select">
+                <option value="" disabled>选择目标分类</option>
+                <option v-for="cat in navStore.categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+              </select>
+              <div class="add-cat-actions">
+                <button class="add-cat-cancel" @click="showBatchMoveModal = false">取消</button>
+                <button class="add-cat-confirm" @click="confirmBatchMove" :disabled="!batchMoveCategoryId">确定</button>
               </div>
             </div>
           </Transition>
@@ -665,6 +813,123 @@ function toggleTools() {
   transform: scale(0.98) translateY(8px);
 }
 
+.slide-down-enter-active {
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.slide-down-leave-active {
+  transition: all 0.18s ease;
+}
+
+.slide-down-enter-from {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+
+.batch-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.batch-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.batch-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.batch-link {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+
+.batch-link:hover {
+  color: var(--primary);
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.batch-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.batch-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.batch-btn.delete:hover:not(:disabled) {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.batch-btn.cancel {
+  color: var(--text-muted);
+}
+
+.batch-move-select {
+  width: 100%;
+  padding: 10px 14px;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.batch-move-select:focus {
+  border-color: var(--primary);
+}
+
 .add-cat-overlay {
   position: fixed;
   inset: 0;
@@ -907,6 +1172,59 @@ function toggleTools() {
   flex-shrink: 0;
 }
 
+.filter-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 10px;
+}
+
+.tag-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 14px 8px;
+}
+
+.tag-chip {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tag-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.tag-chip.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.filter-clear-tags {
+  width: 100%;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.15s ease;
+}
+
+.filter-clear-tags:hover {
+  color: #ef4444;
+}
+
 .filter-pop-enter-active {
   transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -1005,5 +1323,15 @@ function toggleTools() {
     width: 14px;
     height: 14px;
   }
+}
+
+.auth-loading-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg, #f8f9fa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
 }
 </style>

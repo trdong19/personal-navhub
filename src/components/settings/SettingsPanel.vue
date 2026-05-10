@@ -6,6 +6,7 @@ import { useAuth } from '@/composables/useAuth'
 import FileManager from './FileManager.vue'
 import type { ToolbarButtonId } from '@/types'
 import { getEngineFaviconCandidates } from '@/utils/helpers'
+import { useToast } from '@/composables/useToast'
 
 function getEngineFaviconSrc(urlTemplate: string): string {
   return getEngineFaviconCandidates(urlTemplate)[0] || ''
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 const navStore = useNavStore()
 const settingsStore = useSettingsStore()
 const auth = useAuth()
+const toast = useToast()
 
 const activeTab = ref<'theme' | 'layout' | 'search' | 'data' | 'account'>('theme')
 
@@ -223,9 +225,9 @@ function handleImport(event: Event) {
     const content = e.target?.result as string
     const success = navStore.importData(content)
     if (success) {
-      alert('数据导入成功')
+      toast.success('数据导入成功')
     } else {
-      alert('数据格式错误')
+      toast.error('数据格式错误')
     }
   }
   reader.readAsText(file)
@@ -252,14 +254,14 @@ function doResetSettings() {
   settingsStore.resetSettingsOnly()
   showResetDialog.value = false
   navStore.reloadFromStorage()
-  alert('基础设置已重置，书签数据已保留')
+  toast.success('基础设置已重置，书签数据已保留')
 }
 
 function doResetAll() {
   settingsStore.resetAll()
   showResetDialog.value = false
   navStore.reloadFromStorage()
-  alert('所有设置和书签数据已重置')
+  toast.success('所有设置和书签数据已重置')
 }
 
 const bookmarkImportMode = ref<'original' | 'select'>('original')
@@ -311,7 +313,7 @@ function handleBookmarkImport(event: Event) {
     if (rootDL) parseDL(rootDL, '')
 
     if (items.length === 0) {
-      alert('未找到有效书签')
+      toast.warning('未找到有效书签')
       return
     }
 
@@ -333,7 +335,7 @@ function confirmBookmarkImport() {
     items = items.filter(item => selectedCats.has(item.category))
   }
   if (items.length === 0) {
-    alert('没有可导入的书签')
+    toast.warning('没有可导入的书签')
     return
   }
   const catSet = new Set(items.map(i => i.category))
@@ -361,7 +363,7 @@ function confirmBookmarkImport() {
     }
   }
   showBookmarkImport.value = false
-  alert(`成功导入 ${imported} 个书签（跳过 ${items.length - imported} 个重复项）`)
+  toast.success(`成功导入 ${imported} 个书签（跳过 ${items.length - imported} 个重复项）`)
   if (imported > 0) {
     navStore.batchFetchFavicons()
   }
@@ -371,7 +373,7 @@ async function handleLocalImageUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
   if (file.size > 50 * 1024 * 1024) {
-    alert('图片大小不能超过 50MB')
+    toast.error('图片大小不能超过 50MB')
     return
   }
   const reader = new FileReader()

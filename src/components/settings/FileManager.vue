@@ -2,11 +2,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { getAllFiles, saveFile, deleteFile, type StoredFile, blobToDataUrl } from '@/utils/fileStore'
 import { generateId } from '@/utils/helpers'
+import { useToast } from '@/composables/useToast'
 
 const emit = defineEmits<{
   close: []
   'select-wallpaper': [dataUrl: string]
 }>()
+
+const toast = useToast()
 
 const files = ref<StoredFile[]>([])
 const activeCategory = ref<'wallpaper'>('wallpaper')
@@ -37,7 +40,7 @@ async function handleUpload(e: Event) {
   if (!fileList) return
   for (const file of Array.from(fileList)) {
     if (file.size > 10 * 1024 * 1024) {
-      alert(`${file.name} 大小超过 10MB，跳过`)
+      toast.warning(`${file.name} 大小超过 10MB，跳过`)
       continue
     }
     await saveFile({

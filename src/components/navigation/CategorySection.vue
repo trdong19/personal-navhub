@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { NavCategory } from '@/types'
+import type { NavCategory, NavLink } from '@/types'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
 import NavCard from './NavCard.vue'
 import { useFlipSort } from '@/composables/useFlipSort'
+import { useToast } from '@/composables/useToast'
 
 const emit = defineEmits<{
   'open-editor': [id: string]
@@ -12,6 +13,7 @@ const emit = defineEmits<{
 
 const navStore = useNavStore()
 const settingsStore = useSettingsStore()
+const toast = useToast()
 const isDoubleColumn = computed(() => settingsStore.settings.layout.categoryLayout === 'double')
 const draggingId = ref<string | null>(null)
 const categoryListRef = ref<HTMLElement | null>(null)
@@ -27,6 +29,9 @@ const newCatParentId = ref<string | undefined>(undefined)
 
 const showDeleteConfirm = ref(false)
 const deleteTarget = ref<NavCategory | null>(null)
+
+const showLinkDeleteConfirm = ref(false)
+const deleteLinkTarget = ref<NavLink | null>(null)
 
 const topCategories = computed(() =>
   navStore.sortedCategories.filter(c => !c.parentId)
@@ -148,6 +153,13 @@ function openAddCategory(parentId?: string) {
 function confirmAddCategory() {
   const name = newCatName.value.trim()
   if (!name) return
+  const exists = navStore.categories.some(
+    c => c.name === name && c.parentId === (newCatParentId.value || undefined)
+  )
+  if (exists) {
+    toast.warning('该分类下已存在同名分类')
+    return
+  }
   navStore.addCategory(name, '📁', '#6366f1', newCatParentId.value)
   showAddCategory.value = false
   newCatName.value = ''
@@ -220,12 +232,32 @@ function ctxEdit() {
   closeCtxMenu()
 }
 
+function ctxBatchSelect() {
+  navStore.enterSelectionMode()
+  navStore.toggleLinkSelection(ctxMenu.value.linkId)
+  closeCtxMenu()
+}
+
 function ctxDelete() {
   const link = navStore.links.find(l => l.id === ctxMenu.value.linkId)
-  if (link && confirm(`确定删除「${link.title}」吗？`)) {
-    navStore.deleteLink(link.id)
+  if (link) {
+    deleteLinkTarget.value = link
+    showLinkDeleteConfirm.value = true
   }
   closeCtxMenu()
+}
+
+function confirmDeleteLink() {
+  if (deleteLinkTarget.value) {
+    navStore.deleteLink(deleteLinkTarget.value.id)
+  }
+  showLinkDeleteConfirm.value = false
+  deleteLinkTarget.value = null
+}
+
+function cancelDeleteLink() {
+  showLinkDeleteConfirm.value = false
+  deleteLinkTarget.value = null
 }
 
 const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.linkId) || null)
@@ -397,6 +429,11 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
           编辑
         </button>
+        <div class="ctx-divider"></div>
+        <button class="ctx-item" @click="ctxBatchSelect">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+          批量选择
+        </button>
         <button class="ctx-item ctx-danger" @click="ctxDelete">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
           删除
@@ -436,6 +473,21 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
               <div class="add-cat-actions">
                 <button class="add-cat-cancel" @click="cancelDeleteCategory">取消</button>
                 <button class="add-cat-delete-btn" @click="confirmDeleteCategory">确定删除</button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+
+      <Transition name="fade">
+        <div v-if="showLinkDeleteConfirm" class="add-cat-overlay" @mousedown.self="cancelDeleteLink">
+          <Transition name="modal-pop" appear>
+            <div v-if="showLinkDeleteConfirm" class="add-cat-modal">
+              <h3>删除链接</h3>
+              <p class="delete-confirm-msg">确定删除「{{ deleteLinkTarget?.title }}」吗？</p>
+              <div class="add-cat-actions">
+                <button class="add-cat-cancel" @click="cancelDeleteLink">取消</button>
+                <button class="add-cat-delete-btn" @click="confirmDeleteLink">确定删除</button>
               </div>
             </div>
           </Transition>

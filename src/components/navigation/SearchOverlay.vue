@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
+import { pinyinMatch } from '@/utils/pinyin'
 
 const emit = defineEmits<{
   close: []
@@ -23,9 +24,9 @@ const suggestions = computed(() => {
   const q = query.value.toLowerCase()
   return navStore.links
     .filter(link =>
-      link.title.toLowerCase().includes(q) ||
+      pinyinMatch(link.title, q) ||
       link.description?.toLowerCase().includes(q) ||
-      link.tags.some(tag => tag.toLowerCase().includes(q))
+      link.tags.some(tag => pinyinMatch(tag, q))
     )
     .slice(0, 8)
 })

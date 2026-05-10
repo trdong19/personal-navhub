@@ -80,13 +80,30 @@ function ctxEdit() {
 
 function ctxDelete() {
   const link = navStore.links.find(l => l.id === ctxMenu.value.linkId)
-  if (link && confirm(`确定删除「${link.title}」吗？`)) {
-    navStore.deleteLink(link.id)
+  if (link) {
+    deleteLinkTarget.value = link
+    showDeleteConfirm.value = true
   }
   closeCtxMenu()
 }
 
+function confirmDeleteLink() {
+  if (deleteLinkTarget.value) {
+    navStore.deleteLink(deleteLinkTarget.value.id)
+  }
+  showDeleteConfirm.value = false
+  deleteLinkTarget.value = null
+}
+
+function cancelDeleteLink() {
+  showDeleteConfirm.value = false
+  deleteLinkTarget.value = null
+}
+
 const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.linkId) || null)
+
+const showDeleteConfirm = ref(false)
+const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
 </script>
 
 <template>
@@ -137,6 +154,23 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
           删除
         </button>
       </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showDeleteConfirm" class="del-overlay" @mousedown.self="cancelDeleteLink">
+          <Transition name="modal-pop" appear>
+            <div v-if="showDeleteConfirm" class="del-modal">
+              <h3 class="del-title">删除链接</h3>
+              <p class="del-msg">确定删除「{{ deleteLinkTarget?.title }}」吗？</p>
+              <div class="del-actions">
+                <button class="del-cancel" @click="cancelDeleteLink">取消</button>
+                <button class="del-confirm" @click="confirmDeleteLink">确定删除</button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
     </Teleport>
   </section>
 </template>
@@ -226,5 +260,112 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
+}
+</style>
+
+<style>
+.del-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.del-modal {
+  background: var(--bg-card);
+  border: none;
+  border-radius: 20px;
+  padding: 24px;
+  width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.del-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.del-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.del-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.del-cancel {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.del-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.del-confirm {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  background: #ef4444;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+}
+
+.del-confirm:hover {
+  opacity: 0.9;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.modal-pop-enter-active {
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-pop-leave-active {
+  transition: all 0.15s ease;
+}
+
+.modal-pop-enter-from {
+  opacity: 0;
+  transform: scale(0.92) translateY(8px);
+}
+
+.modal-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(4px);
 }
 </style>

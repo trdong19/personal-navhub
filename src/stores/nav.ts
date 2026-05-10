@@ -14,8 +14,9 @@ import { storageGet, storageSet } from '@/utils/storage'
 import { defaultLinks, defaultCategories } from '@/utils/defaults'
 import { generateId, getFaviconUrl } from '@/utils/helpers'
 import { useAuth } from '@/composables/useAuth'
+import { pinyinMatch } from '@/utils/pinyin'
 
-export type LinkFilter = 'all' | 'intranet' | 'extranet' | 'tunnel' | 'tunnel_intranet' | 'tunnel_extranet'
+export type LinkFilter = 'all' | 'intranet' | 'extranet' | 'tunnel' | 'tunnel_intranet' | 'tunnel_extranet' | 'intranet_extranet'
 
 export const useNavStore = defineStore('nav', () => {
   // ==================== 状态 ====================
@@ -34,8 +35,9 @@ export const useNavStore = defineStore('nav', () => {
         case 'intranet': return !!l.urls.intranet
         case 'extranet': return !!l.urls.extranet
         case 'tunnel': return !!l.urls.tunnel
-        case 'tunnel_intranet': return !!l.urls.tunnel || !!l.urls.intranet
-        case 'tunnel_extranet': return !!l.urls.tunnel || !!l.urls.extranet
+        case 'tunnel_intranet': return !!l.urls.tunnel && !!l.urls.intranet
+        case 'tunnel_extranet': return !!l.urls.tunnel && !!l.urls.extranet
+        case 'intranet_extranet': return !!l.urls.intranet && !!l.urls.extranet
         default: return true
       }
     })
@@ -51,9 +53,21 @@ export const useNavStore = defineStore('nav', () => {
   const searchQuery = ref('')
   /** 链接筛选模式 */
   const linkFilter = ref<LinkFilter>('all')
+  /** 标签筛选（空数组表示不筛选） */
+  const tagFilter = ref<string[]>([])
 
   /** 获取防抖同步推送函数 */
   const { debouncePush } = useAuth()
+
+  const allTags = computed(() => {
+    const tagSet = new Set<string>()
+    for (const link of links.value) {
+      for (const tag of link.tags) {
+        tagSet.add(tag)
+      }
+    }
+    return [...tagSet].sort()
+  })
 
   // ==================== 计算属性 ====================
 
@@ -62,12 +76,17 @@ export const useNavStore = defineStore('nav', () => {
     [...categories.value].sort((a, b) => a.order - b.order)
   )
 
+  function applyTagFilter(links: NavLink[]): NavLink[] {
+    if (tagFilter.value.length === 0) return links
+    return links.filter(l => tagFilter.value.every(tag => l.tags.includes(tag)))
+  }
+
   /** 所有置顶的书签（按 pinnedOrder 排序，应用筛选） */
   const pinnedLinks = computed(() =>
-    filterByAddress(
+    applyTagFilter(filterByAddress(
       links.value.filter(l => l.pinned).sort((a, b) => a.pinnedOrder - b.pinnedOrder),
       linkFilter.value
-    )
+    ))
   )
 
   /**
@@ -78,9 +97,9 @@ export const useNavStore = defineStore('nav', () => {
     if (!searchQuery.value.trim()) return []
     const q = searchQuery.value.toLowerCase()
     return links.value.filter(l =>
-      l.title.toLowerCase().includes(q) ||
+      pinyinMatch(l.title, q) ||
       l.description?.toLowerCase().includes(q) ||
-      l.tags.some(t => t.toLowerCase().includes(q)) ||
+      l.tags.some(t => pinyinMatch(t, q)) ||
       l.urls.intranet?.toLowerCase().includes(q) ||
       l.urls.extranet?.toLowerCase().includes(q) ||
       l.urls.tunnel?.toLowerCase().includes(q)
@@ -99,7 +118,7 @@ export const useNavStore = defineStore('nav', () => {
   /** 按分类分组的书签 Map（key=分类ID, value=书签数组，已按 order 排序，应用筛选） */
   const linksByCategory = computed(() => {
     const map = new Map<string, NavLink[]>()
-    const filtered = filterByAddress(links.value, linkFilter.value)
+    const filtered = applyTagFilter(filterByAddress(links.value, linkFilter.value))
     for (const link of filtered) {
       const list = map.get(link.category)
       if (list) {
@@ -128,6 +147,70 @@ export const useNavStore = defineStore('nav', () => {
     linkFilter.value = filter
   }
 
+  function setTagFilter(tags: string[]) {
+    tagFilter.value = tags
+  }
+
+  function toggleTagFilter(tag: string) {
+    const idx = tagFilter.value.indexOf(tag)
+    if (idx === -1) {
+      tagFilter.value = [...tagFilter.value, tag]
+    } else {
+      tagFilter.value = tagFilter.value.filter(t => t !== tag)
+    }
+  }
+
+  // ==================== 批量操作 ====================
+
+  const selectionMode = ref(false)
+  const selectedLinkIds = ref<Set<string>>(new Set())
+
+  function enterSelectionMode() {
+    selectionMode.value = true
+    selectedLinkIds.value = new Set()
+  }
+
+  function exitSelectionMode() {
+    selectionMode.value = false
+    selectedLinkIds.value = new Set()
+  }
+
+  function toggleLinkSelection(linkId: string) {
+    const newSet = new Set(selectedLinkIds.value)
+    if (newSet.has(linkId)) {
+      newSet.delete(linkId)
+    } else {
+      newSet.add(linkId)
+    }
+    selectedLinkIds.value = newSet
+  }
+
+  function selectAllLinks() {
+    selectedLinkIds.value = new Set(links.value.map(l => l.id))
+  }
+
+  function batchDeleteLinks(): number {
+    const count = selectedLinkIds.value.size
+    if (count === 0) return 0
+    links.value = links.value.filter(l => !selectedLinkIds.value.has(l.id))
+    saveLinks()
+    exitSelectionMode()
+    return count
+  }
+
+  function batchMoveLinks(categoryId: string): number {
+    const count = selectedLinkIds.value.size
+    if (count === 0) return 0
+    for (const link of links.value) {
+      if (selectedLinkIds.value.has(link.id)) {
+        link.category = categoryId
+      }
+    }
+    saveLinks()
+    exitSelectionMode()
+    return count
+  }
+
   // ==================== 数据持久化 ====================
 
   /** 保存书签到 localStorage 并触发同步 */
@@ -150,7 +233,11 @@ export const useNavStore = defineStore('nav', () => {
    * @param link - 书签数据（不含 id, accessCount, lastAccessed, createdAt, order）
    * @returns 新创建的书签对象
    */
-  function addLink(link: Omit<NavLink, 'id' | 'accessCount' | 'lastAccessed' | 'createdAt' | 'order' | 'pinnedOrder'>) {
+  function addLink(link: Omit<NavLink, 'id' | 'accessCount' | 'lastAccessed' | 'createdAt' | 'order' | 'pinnedOrder'>): NavLink | null {
+    const duplicate = links.value.some(
+      l => l.title === link.title && l.category === link.category
+    )
+    if (duplicate) return null
     const maxOrder = links.value.length > 0
       ? Math.max(...links.value.map(l => l.order))
       : -1
@@ -284,7 +371,11 @@ export const useNavStore = defineStore('nav', () => {
    * @param parentId - 父分类 ID（可选，用于子分类）
    * @returns 新创建的分类对象
    */
-  function addCategory(name: string, icon: string, color: string, parentId?: string) {
+  function addCategory(name: string, icon: string, color: string, parentId?: string): NavCategory | null {
+    const duplicate = categories.value.some(
+      c => c.name === name && c.parentId === (parentId || undefined)
+    )
+    if (duplicate) return null
     const newCat: NavCategory = {
       id: generateId(),
       name,
@@ -345,7 +436,7 @@ export const useNavStore = defineStore('nav', () => {
         l.urls.tunnel === item.url
       )
       if (!exists) {
-        addLink({
+        const result = addLink({
           title: item.title,
           icon: 'link',
           category: item.category || 'tools',
@@ -353,7 +444,7 @@ export const useNavStore = defineStore('nav', () => {
           tags: item.tags || [],
           pinned: false,
         })
-        imported++
+        if (result) imported++
       }
     }
     return imported
@@ -492,6 +583,8 @@ export const useNavStore = defineStore('nav', () => {
     accessRecords,
     searchQuery,
     linkFilter,
+    tagFilter,
+    allTags,
     sortedCategories,
     pinnedLinks,
     filteredLinks,
@@ -510,6 +603,8 @@ export const useNavStore = defineStore('nav', () => {
     deleteCategory,
     updateCategory,
     setLinkFilter,
+    setTagFilter,
+    toggleTagFilter,
     importLinks,
     exportData,
     importData,
@@ -519,5 +614,13 @@ export const useNavStore = defineStore('nav', () => {
     reloadFromStorage,
     fetchAndCacheFavicon,
     batchFetchFavicons,
+    selectionMode,
+    selectedLinkIds,
+    enterSelectionMode,
+    exitSelectionMode,
+    toggleLinkSelection,
+    selectAllLinks,
+    batchDeleteLinks,
+    batchMoveLinks,
   }
 })

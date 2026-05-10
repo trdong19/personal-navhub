@@ -232,6 +232,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let version = 1
     if (existingRaw) {
       const existing = JSON.parse(existingRaw)
+      const clientVersion = body.data?.version || 0
+
+      // 版本冲突检测：客户端版本落后于服务端，说明其他设备已更新
+      if (clientVersion > 0 && clientVersion < existing.version) {
+        return json({
+          error: '数据冲突，请先拉取最新数据',
+          conflict: true,
+          serverVersion: existing.version,
+        }, 409)
+      }
+
       version = (existing.version || 0) + 1
       const existingCompact = JSON.stringify({
         s: existing.settings,
@@ -473,6 +484,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ success: true })
   }
 
+  if (action === 'sync-beacon') {
+    const beaconToken = url.searchParams.get('token')
+    if (!beaconToken) {
+      return new Response(null, { status: 204, headers: corsHeaders() })
+    }
+    const username = await extractUser(beaconToken, env)
+    if (!username) {
+      return new Response(null, { status: 204, headers: corsHeaders() })
+    }
+
+    let body: { data: Record<string, unknown> }
+    try { body = await context.request.json() } catch { return new Response(null, { status: 204, headers: corsHeaders() }) }
+
+    const existingRaw = await env.NAV_KV.get(`data:${username}`)
+    let version = 1
+    if (existingRaw) {
+      const existing = JSON.parse(existingRaw)
+      version = (existing.version || 0) + 1
+    }
+
+    const syncData: SyncData = {
+      settings: body.data.settings as SyncData['settings'],
+      links: (body.data.links as unknown[]) || [],
+      categories: (body.data.categories as unknown[]) || [],
+      accessRecords: (body.data.accessRecords as unknown[]) || [],
+      updatedAt: Date.now(),
+      version,
+    }
+
+    await env.NAV_KV.put(`data:${username}`, JSON.stringify(syncData))
+    return new Response(null, { status: 204, headers: corsHeaders() })
+  }
+
   return json({ error: '未知操作' }, 404)
   } catch (err: any) {
     return json({ error: `服务器内部错误: ${err.message || err}` }, 500)
@@ -503,6 +547,21 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
       const role = await getUserRole(username, env)
       return json({ logged_in: true, username, role })
+    }
+
+    if (action === 'check-version') {
+      const authHeader = context.request.headers.get('Authorization')
+      const token = authHeader?.replace('Bearer ', '')
+      if (!token) return json({ error: '未登录' }, 401)
+
+      const username = await extractUser(token, env)
+      if (!username) return json({ error: '登录已过期' }, 401)
+
+      const raw = await env.NAV_KV.get(`data:${username}`)
+      if (!raw) return json({ version: 0, updatedAt: 0 })
+
+      const data = JSON.parse(raw)
+      return json({ version: data.version || 0, updatedAt: data.updatedAt || 0 })
     }
 
     return json({ error: 'Not found' }, 404)
