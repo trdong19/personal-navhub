@@ -187,6 +187,7 @@ function toggleTools() {
       @open-settings="showSettings = true"
       @open-editor="openEditor()"
       @open-stats="showStats = true"
+      @login-success="navStore.batchFetchFavicons()"
     />
 
     <main class="main-content">

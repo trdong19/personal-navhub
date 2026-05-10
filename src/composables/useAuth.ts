@@ -50,10 +50,12 @@ const role = ref<string>(localStorage.getItem('nav_auth_role') || '')
 const authStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 /** 认证状态消息（用于 UI 显示） */
 const authMessage = ref('')
+/** 是否已登录（模块级别，全局共享） */
+const isLoggedIn = ref(!!token.value)
 /** 自动同步的防抖定时器 */
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
-  /** 上次成功推送的数据哈希，用于前端去重 */
-  let lastPushHash = ''
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+/** 上次成功推送的数据哈希，用于前端去重 */
+let lastPushHash = ''
 
 /**
  * 获取 API 基础路径
@@ -86,8 +88,6 @@ function headers(): Record<string, string> {
  * 提供登录、注册、登出、数据同步（push/pull）、管理员操作等功能
  */
 export function useAuth() {
-  /** 是否已登录（响应式） */
-  const isLoggedIn = ref(!!token.value)
 
   /**
    * 设置认证信息（登录/注册成功后调用）
@@ -137,7 +137,7 @@ export function useAuth() {
       })
       const data = await safeJson(res)
       if (!res.ok) throw new Error(data.error || '注册失败')
-      setAuth(data.token, data.username)
+      setAuth(data.token, data.username, data.role)
       authStatus.value = 'success'
       authMessage.value = '注册成功'
       return true

@@ -10,6 +10,7 @@ const emit = defineEmits<{
   'open-editor': []
   'open-stats': []
   'open-admin': []
+  'login-success': []
 }>()
 
 const settingsStore = useSettingsStore()
@@ -61,14 +62,11 @@ async function handleAuthSubmit() {
   } else {
     await auth.login(authForm.value.username.trim(), authForm.value.password, authForm.value.rememberMe)
     if (auth.isLoggedIn.value) {
-      const hasCloudData = await auth.pull()
-      if (hasCloudData) {
-        settingsStore.reloadFromStorage()
-        navStore.reloadFromStorage()
-      } else {
-        await auth.push()
-      }
+      await auth.pull()
+      settingsStore.reloadFromStorage()
+      navStore.reloadFromStorage()
       closeAuthModal()
+      emit('login-success')
     }
   }
   authLoading.value = false

@@ -20,34 +20,10 @@ const dataStore = new Map()
 const resources = new Map()
 
 /** 注册功能是否开启（管理员可控制） */
-let registrationEnabled = false
+let registrationEnabled = true
 
 // ==================== 初始化 ====================
 
-/**
- * 创建默认管理员账号
- * 仅在 users 中不存在 admin 时创建
- * 默认密码: admin123
- */
-function createAdminAccount() {
-  const adminName = 'admin'
-  if (!users.has(adminName)) {
-    const salt = randomHex(16)
-    const hash = hashPassword('admin123', salt)
-    users.set(adminName, { hash, salt, createdAt: Date.now(), role: 'admin' })
-    dataStore.set(adminName, {
-      settings: null, links: [], categories: [], accessRecords: [],
-      updatedAt: Date.now(), version: 1,
-    })
-    console.log('[初始化] 已创建管理员账号: admin / admin123')
-  }
-}
-
-/**
- * 判断用户是否为管理员
- * @param {string} username - 用户名
- * @returns {boolean}
- */
 function isAdmin(username) {
   const user = users.get(username)
   return user && user.role === 'admin'
@@ -138,6 +114,15 @@ function getResourceKey(username, resourceId) {
   return `${username}:${resourceId}`
 }
 
+function resHash(data) {
+  let h = 0
+  const step = Math.max(1, Math.floor(data.length / 200))
+  for (let i = 0; i < data.length; i += step) {
+    h = ((h << 5) - h + data.charCodeAt(i)) | 0
+  }
+  return `${data.length}_${h}`
+}
+
 /** 请求体最大限制: 50MB */
 const MAX_BODY_SIZE = 50 * 1024 * 1024
 
@@ -210,7 +195,9 @@ const server = http.createServer(async (req, res) => {
 
       const salt = randomHex(16)
       const hash = hashPassword(password, salt)
-      users.set(username, { hash, salt, createdAt: Date.now(), role: 'user' })
+      const isFirst = users.size === 0
+      const role = isFirst ? 'admin' : 'user'
+      users.set(username, { hash, salt, createdAt: Date.now(), role })
       dataStore.set(username, {
         settings: null, links: [], categories: [], accessRecords: [],
         updatedAt: Date.now(), version: 1,
@@ -219,8 +206,8 @@ const server = http.createServer(async (req, res) => {
       const token = randomHex(32)
       tokens.set(token, username)
 
-      console.log(`[注册] ${username}`)
-      return json(res, { success: true, token, username })
+      console.log(`[注册] ${username} role=${role}`)
+      return json(res, { success: true, token, username, role })
     }
 
     // ---------- 用户登录 ----------
@@ -288,7 +275,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---------- 数据拉取（pull）----------
-    // 前端从服务器下载全部数据（设置、书签、分类 + 资源）
+    // 前端从服务器下载全部数据（设置、书签、分类 + 资源元数据）
     if (action === 'pull') {
       const username = getTokenUser(req)
       if (!username) return json(res, { error: '登录已过期' }, 401)
@@ -296,22 +283,40 @@ const server = http.createServer(async (req, res) => {
       const data = dataStore.get(username)
       if (!data) return json(res, { data: null, message: '暂无数据' })
 
-      // 收集该用户的所有资源
-      const userResources = {}
+      const resourcesMeta = {}
       for (const [key, val] of resources.entries()) {
         if (key.startsWith(username + ':')) {
           const resId = key.substring(username.length + 1)
-          userResources[resId] = val
+          resourcesMeta[resId] = resHash(val)
         }
       }
 
       const responseData = {
         ...data,
-        resources: Object.keys(userResources).length > 0 ? userResources : undefined,
+        resourcesMeta: Object.keys(resourcesMeta).length > 0 ? resourcesMeta : undefined,
       }
 
       console.log(`[数据拉取] ${username}`)
       return json(res, { data: responseData, updatedAt: data.updatedAt, version: data.version })
+    }
+
+    // ---------- 按需拉取资源（pull-resources）----------
+    if (action === 'pull-resources') {
+      const username = getTokenUser(req)
+      if (!username) return json(res, { error: '登录已过期' }, 401)
+
+      const ids = body.ids
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return json(res, { resources: {} })
+      }
+
+      const result = {}
+      for (const id of ids) {
+        const val = resources.get(getResourceKey(username, id))
+        if (val) result[id] = val
+      }
+
+      return json(res, { resources: result })
     }
 
     // ---------- 用户登出 ----------
@@ -434,10 +439,9 @@ const server = http.createServer(async (req, res) => {
 
 const PORT = 3456
 server.listen(PORT, () => {
-  createAdminAccount()
   console.log(`本地API服务运行在 http://localhost:${PORT}/api`)
   console.log('端点: POST /api/register, /api/login, /api/logout, /api/sync, /api/pull, /api/upload-resource')
   console.log('      GET  /api/me, /api/health, /api/resource/:id')
   console.log('管理员: POST /api/admin/users, /api/admin/add-user, /api/admin/delete-user, /api/admin/toggle-registration, /api/admin/status')
-  console.log('默认管理员: admin / admin123')
+  console.log('第一个注册的用户自动成为管理员')
 })
