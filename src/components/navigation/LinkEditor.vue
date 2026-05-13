@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
   linkId: string | null
+  defaultCategoryId?: string
 }>()
 
 const emit = defineEmits<{
@@ -34,7 +35,7 @@ const showCustomFontColor = ref(false)
 
 const form = ref({
   title: '',
-  icon: '🔗',
+  icon: '',
   iconUrl: '',
   description: '',
   category: '',
@@ -121,6 +122,9 @@ onMounted(() => {
         fontOpacity: link.fontOpacity ?? 1,
       }
     }
+  } else if (props.defaultCategoryId) {
+    // 如果是新建链接并且有默认分类 ID，设置为默认选中的分类
+    form.value.category = props.defaultCategoryId
   }
 })
 

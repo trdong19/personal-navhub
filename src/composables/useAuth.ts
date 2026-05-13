@@ -7,6 +7,14 @@
  */
 import { ref, computed } from 'vue'
 import { saveBgImage, getBgImage, blobToDataUrl, getFilesByCategory, getBgImageBlob, saveFile } from '@/utils/fileStore'
+import { storageGet, storageSet } from '@/utils/storage'
+
+/**
+ * 安全写入 localStorage，超出配额时静默失败
+ */
+function safeSetItem(key: string, value: string) {
+  try { localStorage.setItem(key, value) } catch {}
+}
 
 const PUSH_RES_HASH_KEY = 'nav_push_res_hashes'
 const PULL_RES_HASH_KEY = 'nav_pull_res_hashes'
@@ -81,8 +89,9 @@ async function safeJson(res: Response) {
  * 构造带认证 token 的请求头
  * @returns 请求头对象，包含 Content-Type 和 Authorization
  */
-function headers(): Record<string, string> {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' }
+function headers(method: string = 'POST'): Record<string, string> {
+  const h: Record<string, string> = {}
+  if (method !== 'GET') h['Content-Type'] = 'application/json'
   if (token.value) h['Authorization'] = `Bearer ${token.value}`
   return h
 }
@@ -203,7 +212,7 @@ export function useAuth() {
   async function checkSession(): Promise<boolean> {
     if (!token.value) return false
     try {
-      const res = await fetch(`${getApiBase()}/me`, { headers: headers() })
+      const res = await fetch(`${getApiBase()}/me`, { headers: headers('GET') })
       const data = await safeJson(res)
       if (data.logged_in) {
         username.value = data.username
@@ -325,7 +334,7 @@ export function useAuth() {
         })
         if (retryRes.ok) {
           const retryResult = await safeJson(retryRes)
-          localStorage.setItem(CACHED_VERSION_KEY, String(retryResult.version))
+          safeSetItem(CACHED_VERSION_KEY, String(retryResult.version))
           lastPushHash = coreHash
           window.dispatchEvent(new CustomEvent('nav-remote-update'))
         }
@@ -334,7 +343,7 @@ export function useAuth() {
       const result = await safeJson(res)
       if (res.ok) {
         lastPushHash = coreHash
-        localStorage.setItem(CACHED_VERSION_KEY, String(result.version))
+        safeSetItem(CACHED_VERSION_KEY, String(result.version))
       }
       return res.ok
     } catch {
@@ -363,8 +372,13 @@ export function useAuth() {
         throw new Error('登录已过期，请重新登录')
       }
       const result = await safeJson(res)
+      console.log('[pull调试] result:', JSON.stringify(result)?.substring(0, 200))
       if (!res.ok) throw new Error(result.error || '拉取失败')
-      if (!result.data) return false
+      if (!result.data) {
+        // 服务器无数据（首次使用），不需要拉取
+        console.log('[pull调试] 服务器无数据，返回true')
+        return true
+      }
 
       const resourcesMeta: Record<string, string> = result.data.resourcesMeta || {}
 
@@ -408,8 +422,8 @@ export function useAuth() {
           newLocalRes[resId] = resources[resId]
         }
       }
-      localStorage.setItem('nav_cached_resources', JSON.stringify(newLocalRes))
-      localStorage.setItem(PULL_RES_HASH_KEY, JSON.stringify(resourcesMeta))
+      safeSetItem('nav_cached_resources', JSON.stringify(newLocalRes))
+      safeSetItem(PULL_RES_HASH_KEY, JSON.stringify(resourcesMeta))
 
       // 将书签中的 res:// 引用还原为实际的 dataUrl
       if (result.data.links) {
@@ -433,18 +447,18 @@ export function useAuth() {
         }
       }
 
-      // 写入 localStorage
+      // 写入 localStorage（使用 storageSet 自动添加 nav_ 前缀）
       if (result.data.settings) {
-        localStorage.setItem('nav_userSettings', JSON.stringify(result.data.settings))
+        storageSet('userSettings', result.data.settings)
       }
       if (result.data.links) {
-        localStorage.setItem('nav_navLinks', JSON.stringify(result.data.links))
+        storageSet('navLinks', result.data.links)
       }
       if (result.data.categories) {
-        localStorage.setItem('nav_navCategories', JSON.stringify(result.data.categories))
+        storageSet('navCategories', result.data.categories)
       }
       if (result.data.accessRecords) {
-        localStorage.setItem('nav_accessRecords', JSON.stringify(result.data.accessRecords))
+        storageSet('accessRecords', result.data.accessRecords)
       }
 
       // 保存背景图到 IndexedDB
@@ -456,12 +470,20 @@ export function useAuth() {
         }
       }
 
-      // 保存壁纸文件到 IndexedDB
+      // 获取本地已删除的图片列表
+      const deletedImages: string[] = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
+
+      // 保存壁纸文件到 IndexedDB（跳过已删除的图片）
       for (const [key, dataUrl] of Object.entries(resources)) {
         if (key === 'bg' || key.startsWith('icon_') || key.startsWith('cachedicon_')) continue
         if (key.startsWith('wallpaper:') && typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
           try {
             const fileId = key.replace('wallpaper:', '')
+            // 如果图片已删除，跳过恢复
+            if (deletedImages.includes(fileId)) {
+              console.log(`[pull] 跳过已删除的图片: ${fileId}`)
+              continue
+            }
             const res = await fetch(dataUrl)
             const blob = await res.blob()
             await saveFile({ id: fileId, name: fileId, type: blob.type || 'image/jpeg', category: 'wallpaper', blob })
@@ -473,11 +495,12 @@ export function useAuth() {
 
       // 更新缓存的版本号
       if (result.version) {
-        localStorage.setItem(CACHED_VERSION_KEY, String(result.version))
+        safeSetItem(CACHED_VERSION_KEY, String(result.version))
       }
 
       return true
     } catch (err: any) {
+      console.error('[pull错误]', err?.message || err)
       return false
     }
   }
@@ -523,6 +546,12 @@ export function useAuth() {
       const categoriesData = localStorage.getItem('nav_navCategories')
       const recordsData = localStorage.getItem('nav_accessRecords')
       const links: any[] = linksData ? JSON.parse(linksData) : []
+      const categories: any[] = categoriesData ? JSON.parse(categoriesData) : []
+      // 如果本地没有数据，不推送（避免覆盖服务器）
+      if (links.length === 0 && categories.length === 0) {
+        console.log('[Beacon] 本地无数据，跳过推送')
+        return
+      }
       for (const link of links) {
         if (link.iconUrl && typeof link.iconUrl === 'string' && link.iconUrl.startsWith('data:')) {
           link.iconUrl = ''
@@ -536,7 +565,7 @@ export function useAuth() {
         data: {
           settings: settingsData ? JSON.parse(settingsData) : null,
           links,
-          categories: categoriesData ? JSON.parse(categoriesData) : [],
+          categories,
           accessRecords: recordsData ? JSON.parse(recordsData) : [],
           updatedAt: Date.now(),
           version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
@@ -553,7 +582,7 @@ export function useAuth() {
   async function checkServerVersion(): Promise<number | null> {
     if (!token.value) return null
     try {
-      const res = await fetch(`${getApiBase()}/check-version`, { headers: headers() })
+      const res = await fetch(`${getApiBase()}/check-version`, { headers: headers('GET') })
       if (!res.ok) return null
       const data = await res.json()
       return data.version || 0

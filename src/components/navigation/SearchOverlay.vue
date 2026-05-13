@@ -3,6 +3,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
 import { pinyinMatch } from '@/utils/pinyin'
+import { highlightMatch } from '@/utils/helpers'
 
 const emit = defineEmits<{
   close: []
@@ -14,6 +15,8 @@ const navStore = useNavStore()
 const settingsStore = useSettingsStore()
 const searchInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
+// 键盘导航：当前高亮的项索引，-1 表示未选中
+const activeIndex = ref(-1)
 
 const isCommandMode = computed(() => query.value.startsWith('>'))
 
@@ -45,6 +48,18 @@ const commands = computed(() => {
 
   if (!cmd) return allCommands
   return allCommands.filter(c => c.name.toLowerCase().includes(cmd))
+})
+
+// 合并 suggestions 和 commands 为统一列表，用于键盘导航
+const navItems = computed(() => {
+  const items: { type: 'link' | 'command'; data: any }[] = []
+  for (const link of suggestions.value) {
+    items.push({ type: 'link', data: link })
+  }
+  for (const cmd of commands.value) {
+    items.push({ type: 'command', data: cmd })
+  }
+  return items
 })
 
 function handleExport() {
@@ -83,8 +98,26 @@ function handleSearch() {
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     emit('close')
+  } else if (e.key === 'ArrowDown') {
+    // 向下移动高亮项
+    e.preventDefault()
+    activeIndex.value = Math.min(activeIndex.value + 1, navItems.value.length - 1)
+    scrollToActive()
+  } else if (e.key === 'ArrowUp') {
+    // 向上移动高亮项
+    e.preventDefault()
+    activeIndex.value = Math.max(activeIndex.value - 1, -1)
+    scrollToActive()
   } else if (e.key === 'Enter') {
-    if (suggestions.value.length > 0) {
+    // 如果有高亮项则选中对应项
+    if (activeIndex.value >= 0 && navItems.value[activeIndex.value]) {
+      const item = navItems.value[activeIndex.value]
+      if (item.type === 'link') {
+        handleSelect(item.data)
+      } else {
+        handleCommandSelect(item.data)
+      }
+    } else if (suggestions.value.length > 0) {
       handleSelect(suggestions.value[0])
     } else if (commands.value.length > 0 && isCommandMode.value) {
       handleCommandSelect(commands.value[0])
@@ -92,6 +125,18 @@ function handleKeydown(e: KeyboardEvent) {
       handleSearch()
     }
   }
+}
+
+/** 滚动当前高亮的项到可见区域 */
+function scrollToActive() {
+  nextTick(() => {
+    const container = document.querySelector('.search-results') as HTMLElement
+    if (!container) return
+    const activeEl = container.querySelector('.result-item.active') as HTMLElement
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest' })
+    }
+  })
 }
 
 onMounted(() => {
@@ -102,7 +147,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="search-overlay" @mousedown.self="emit('close')">
+  <div class="search-overlay" role="dialog" aria-modal="true" aria-label="搜索" @mousedown.self="emit('close')">
     <div class="search-modal">
       <div class="search-header">
         <div class="search-input-wrapper">
@@ -112,6 +157,7 @@ onMounted(() => {
             v-model="query"
             type="text"
             placeholder="搜索网址或输入 > 查看命令..."
+            aria-label="搜索书签或输入命令"
             @keydown="handleKeydown"
             autofocus
           />
@@ -123,14 +169,14 @@ onMounted(() => {
         <div class="result-section">
           <div class="result-title">网址</div>
           <div
-            v-for="link in suggestions"
+            v-for="(link, index) in suggestions"
             :key="link.id"
-            class="result-item"
+            :class="['result-item', { active: index === activeIndex }]"
             @click="handleSelect(link)"
           >
             <div class="result-icon">🔗</div>
             <div class="result-info">
-              <div class="result-name">{{ link.title }}</div>
+              <div class="result-name"><span v-html="highlightMatch(link.title, query)"></span></div>
               <div class="result-desc">{{ link.description }}</div>
             </div>
             <div class="result-url">{{ link.urls.extranet || link.urls.intranet }}</div>
@@ -142,9 +188,9 @@ onMounted(() => {
         <div class="result-section">
           <div class="result-title">命令</div>
           <div
-            v-for="cmd in commands"
+            v-for="(cmd, index) in commands"
             :key="cmd.id"
-            class="result-item"
+            :class="['result-item', { active: suggestions.length + index === activeIndex }]"
             @click="handleCommandSelect(cmd)"
           >
             <div class="result-icon">{{ cmd.icon }}</div>
@@ -280,6 +326,10 @@ onMounted(() => {
 }
 
 .result-item:hover {
+  background: var(--bg-hover);
+}
+
+.result-item.active {
   background: var(--bg-hover);
 }
 

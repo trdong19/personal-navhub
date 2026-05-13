@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 const emit = defineEmits<{
   close: []
   'select-wallpaper': [dataUrl: string]
+  'delete-wallpaper': [id: string]
 }>()
 
 const toast = useToast()
@@ -60,10 +61,17 @@ async function handleDelete(id: string) {
   const url = objectUrlCache.get(id)
   if (url) { URL.revokeObjectURL(url); objectUrlCache.delete(id) }
   await deleteFile(id)
+  // 标记图片为已删除，避免 pull 时恢复
+  const deletedImages: string[] = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
+  if (!deletedImages.includes(id)) {
+    deletedImages.push(id)
+    localStorage.setItem('nav_deleted_bg_images', JSON.stringify(deletedImages))
+  }
   await loadFiles()
   if (previewFile.value?.id === id) {
     closePreview()
   }
+  emit('delete-wallpaper', id)
 }
 
 async function handleSetWallpaper(file: StoredFile) {
@@ -88,10 +96,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-function getObjectUrl(blob: Blob): string {
-  return URL.createObjectURL(blob)
 }
 
 onMounted(loadFiles)
@@ -317,31 +321,6 @@ onMounted(loadFiles)
   gap: 12px;
 }
 
-.fm-grid-compact {
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 8px;
-}
-
-.fm-grid-compact .fm-item-preview {
-  height: 56px;
-}
-
-.fm-grid-compact .fm-item-info {
-  padding: 4px 6px 2px;
-}
-
-.fm-grid-compact .fm-item-name {
-  font-size: 10px;
-}
-
-.fm-grid-compact .fm-item-size {
-  font-size: 9px;
-}
-
-.fm-grid-compact .fm-item-actions {
-  padding: 2px 4px 4px;
-}
-
 .fm-item {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -446,11 +425,6 @@ onMounted(loadFiles)
 .fm-action-wallpaper:hover {
   background: rgba(99, 102, 241, 0.1);
   color: var(--primary);
-}
-
-.fm-action-use:hover {
-  background: rgba(234, 179, 8, 0.1);
-  color: #eab308;
 }
 
 .fm-action-delete:hover {

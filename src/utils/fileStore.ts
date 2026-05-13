@@ -233,3 +233,26 @@ export async function getBgImageBlob(): Promise<Blob | null> {
 export async function deleteBgImage(): Promise<void> {
   await deleteFile('bg_image')
 }
+
+/**
+ * 清空指定分类的所有文件
+ * @param category - 文件分类名
+ */
+export async function clearFilesByCategory(category: string): Promise<void> {
+  const db = await openDB()
+  const tx = db.transaction(STORE_NAME, 'readwrite')
+  const store = tx.objectStore(STORE_NAME)
+  const idx = store.index('category')
+  const req = idx.openCursor(IDBKeyRange.only(category))
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => {
+      const cursor = req.result
+      if (cursor) {
+        cursor.delete()
+        cursor.continue()
+      }
+    }
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}

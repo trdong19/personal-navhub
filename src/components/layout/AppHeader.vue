@@ -3,7 +3,9 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useNavStore } from '@/stores/nav'
 import { useAuth } from '@/composables/useAuth'
+import { clearFilesByCategory } from '@/utils/fileStore'
 import { animateDropdown } from '@/composables/useAnimation'
+import { useToast } from '@/composables/useToast'
 
 const emit = defineEmits<{
   'open-settings': []
@@ -11,12 +13,31 @@ const emit = defineEmits<{
   'open-stats': []
   'open-admin': []
   'login-success': []
+  'undo-delete': []
 }>()
 
 const settingsStore = useSettingsStore()
 const navStore = useNavStore()
 const auth = useAuth()
 const showMenu = ref(false)
+const toast = useToast()
+
+const hasDeletedLinks = computed(() => navStore.deletedLinksCache.length > 0)
+const hasMovedLinks = computed(() => navStore.moveCache.length > 0)
+
+function handleUndoDelete() {
+  const count = navStore.restoreDeletedLinks()
+  if (count > 0) {
+    toast.success(`已撤回删除 ${count} 个链接`)
+  }
+}
+
+function handleUndoMove() {
+  const count = navStore.restoreMovedLinks()
+  if (count > 0) {
+    toast.success(`已撤回移动 ${count} 个链接`)
+  }
+}
 const menuRef = ref<HTMLElement | null>(null)
 const menuDropdownRef = ref<HTMLElement | null>(null)
 const showAuthModal = ref(!auth.isLoggedIn.value)
@@ -55,6 +76,9 @@ async function handleAuthSubmit() {
       localStorage.removeItem('nav_navCategories')
       localStorage.removeItem('nav_accessRecords')
       localStorage.removeItem('nav_local_bg_image')
+      localStorage.removeItem('nav_deleted_bg_images')
+      await clearFilesByCategory('wallpaper')
+      await clearFilesByCategory('icon')
       settingsStore.reloadFromStorage()
       navStore.reloadFromStorage()
       closeAuthModal()
@@ -177,15 +201,22 @@ defineExpose({ openAdminPanel })
 <template>
   <header class="header">
     <div class="header-inner">
-      <div class="header-left">
-        <h1 class="logo">
-          <span class="logo-icon">🍓</span>
-          <span class="logo-text">{{ settingsStore.settings.siteTitle }}</span>
-        </h1>
-        <p v-if="settingsStore.settings.siteDescription" class="site-desc">{{ settingsStore.settings.siteDescription }}</p>
-      </div>
+      <div class="header-left"></div>
 
       <div class="header-right">
+        <Transition name="fade">
+          <button v-if="hasMovedLinks" class="undo-btn move-undo-btn" title="撤回移动" @click="handleUndoMove">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            <span class="undo-count">{{ navStore.moveCache.length }}</span>
+          </button>
+        </Transition>
+        <Transition name="fade">
+          <button v-if="hasDeletedLinks" class="undo-btn" title="撤回删除" @click="handleUndoDelete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            <span class="undo-count">{{ navStore.deletedLinksCache.length }}</span>
+          </button>
+        </Transition>
+
         <div v-if="!auth.isLoggedIn.value" class="login-btn-wrapper">
           <button class="login-btn" @click="openAuthModal">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg>
@@ -204,7 +235,7 @@ defineExpose({ openAdminPanel })
           </button>
 
           <div class="auth-modal-header">
-            <div class="auth-modal-icon">🍓</div>
+            <div class="auth-modal-icon">🔥</div>
             <h2 class="auth-modal-title">NavHub</h2>
           </div>
 
@@ -354,33 +385,7 @@ defineExpose({ openAdminPanel })
   gap: 16px;
 }
 
-.header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex-shrink: 0;
-}
 
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.logo-icon {
-  font-size: 24px;
-}
-
-.site-desc {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  line-height: 1.2;
-}
 
 .header-right {
   display: flex;
@@ -392,6 +397,53 @@ defineExpose({ openAdminPanel })
 
 .login-btn-wrapper {
   flex-shrink: 0;
+}
+
+.undo-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  transition: all var(--transition);
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 40px;
+  min-width: 60px;
+}
+
+.undo-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.undo-btn.move-undo-btn {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.undo-btn.move-undo-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.undo-count {
+  background: #ef4444;
+  color: white;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.undo-btn.move-undo-btn .undo-count {
+  background: #3b82f6;
 }
 
 .login-btn {
@@ -414,85 +466,6 @@ defineExpose({ openAdminPanel })
   opacity: 0.9;
   transform: translateY(-1px);
   box-shadow: 0 3px 8px rgba(99, 102, 241, 0.25);
-}
-
-.user-menu-wrapper {
-  position: relative;
-}
-
-.user-badge-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-radius: 20px;
-  background: var(--bg);
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition);
-  font-size: 13px;
-  color: var(--text);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-}
-
-.user-badge-btn:hover {
-  background: var(--bg-hover);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
-}
-
-.user-avatar {
-  font-size: 16px;
-}
-
-.chevron {
-  transition: transform 0.2s ease;
-  color: var(--text-muted);
-}
-
-.chevron.open {
-  transform: rotate(180deg);
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: var(--bg-card);
-  border: none;
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  min-width: 180px;
-  padding: 4px;
-  z-index: 200;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-secondary);
-  transition: all var(--transition);
-  cursor: pointer;
-}
-
-.menu-item:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.menu-item-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.menu-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 8px;
 }
 
 .fade-enter-active, .fade-leave-active {
@@ -520,7 +493,8 @@ defineExpose({ openAdminPanel })
   max-width: 90vw;
   background: var(--bg-card);
   border: none;
-  border-radius: 20px;
+  /* 登录弹窗圆角跟随全局设置 */
+  border-radius: var(--radius);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   padding: 28px 24px;
   animation: scaleIn 0.2s ease;
@@ -717,7 +691,8 @@ defineExpose({ openAdminPanel })
   max-height: 85vh;
   background: var(--bg-card);
   border: none;
-  border-radius: 20px;
+  /* 管理面板弹窗圆角跟随全局设置 */
+  border-radius: var(--radius);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   display: flex;
@@ -936,28 +911,23 @@ defineExpose({ openAdminPanel })
   color: var(--text-muted);
 }
 
-.menu-item-admin {
-  color: #eab308;
-}
-
-.menu-item-admin:hover {
-  background: rgba(234, 179, 8, 0.08);
-  color: #eab308;
-}
-
 @media (max-width: 768px) {
   .header-inner {
     padding: 0 12px;
     gap: 10px;
   }
-  .logo-text {
-    display: none;
+  .undo-btn {
+    padding: 8px 14px;
+    min-height: 44px;
+    min-width: 70px;
   }
-  .login-btn span {
-    display: none;
+  .undo-btn svg {
+    width: 18px;
+    height: 18px;
   }
-  .user-name {
-    display: none;
+  .undo-count {
+    font-size: 12px;
+    padding: 2px 7px;
   }
 }
 </style>

@@ -9,7 +9,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { UserSettings, ThemeMode, SearchEngine, ToolbarButtonId, ToolbarButtonConfig, CategoryLayout } from '@/types'
+import type { UserSettings, ThemeMode, SearchEngine, ToolbarButtonId, ToolbarButtonConfig } from '@/types'
 import { storageGet, storageSet, storageRemove } from '@/utils/storage'
 import { defaultSettings } from '@/utils/defaults'
 import { useAuth } from '@/composables/useAuth'
@@ -65,8 +65,28 @@ function mixColor(hex: string, amount: number, toward: string = '#ffffff'): stri
 // ==================== Store 定义 ====================
 
 export const useSettingsStore = defineStore('settings', () => {
-  /** 用户设置（从 localStorage 读取，无则用默认值） */
-  const settings = ref<UserSettings>(storageGet('userSettings', defaultSettings))
+  /**
+   * 深度合并：用默认值填充 localStorage 中缺失的字段
+   * 防止 pull 后数据不完整导致页面崩溃
+   */
+  function deepMergeWithDefaults(stored: any, defaults: any): UserSettings {
+    if (!stored || typeof stored !== 'object') return { ...defaults }
+    const result = { ...defaults }
+    for (const key of Object.keys(defaults)) {
+      if (key in stored && stored[key] != null) {
+        if (typeof defaults[key] === 'object' && defaults[key] !== null && !Array.isArray(defaults[key])) {
+          // 递归合并子对象，确保子对象的子对象也完整
+          result[key] = deepMergeWithDefaults(stored[key], defaults[key])
+        } else {
+          result[key] = stored[key]
+        }
+      }
+    }
+    return result as UserSettings
+  }
+
+  /** 用户设置（从 localStorage 读取，与默认值深度合并确保结构完整） */
+  const settings = ref<UserSettings>(deepMergeWithDefaults(storageGet('userSettings', {}), defaultSettings))
 
   /**
    * 本地背景图的显示 URL
@@ -115,8 +135,10 @@ export const useSettingsStore = defineStore('settings', () => {
    * 7. 设置页面标题
    */
   function applyTheme() {
+    // 防御性检查：确保 theme 对象完整
+    const theme = settings.value?.theme ?? defaultSettings.theme
     // 处理深色/浅色模式
-    const mode = settings.value.theme.mode
+    const mode = theme.mode ?? 'auto'
     let dark = false
     if (mode === 'dark') {
       dark = true
@@ -125,13 +147,13 @@ export const useSettingsStore = defineStore('settings', () => {
     }
     isDark.value = dark
     document.documentElement.classList.toggle('dark', dark)
-    document.documentElement.style.setProperty('--primary', settings.value.theme.primaryColor)
-    document.documentElement.style.setProperty('--radius', settings.value.theme.borderRadius + 'px')
+    document.documentElement.style.setProperty('--primary', theme.primaryColor ?? '#6366f1')
+    document.documentElement.style.setProperty('--radius', (theme.borderRadius ?? 16) + 'px')
 
     // 处理背景图
-    const bg = settings.value.theme.backgroundImage || localBgImage.value
-    const bgColor = settings.value.theme.backgroundColor
-    const glass = settings.value.theme.glassEffect
+    const bg = theme.backgroundImage || localBgImage.value
+    const bgColor = theme.backgroundColor
+    const glass = theme.glassEffect
 
     if (bg) {
       document.documentElement.style.setProperty('--bg-image', `url(${bg})`)
@@ -184,16 +206,16 @@ export const useSettingsStore = defineStore('settings', () => {
     // 毛玻璃效果开关
     document.documentElement.classList.toggle('has-glass', !!glass)
     // 背景遮罩开关
-    document.documentElement.classList.toggle('no-bg-overlay', settings.value.theme.bgOverlay === false)
+    document.documentElement.classList.toggle('no-bg-overlay', theme.bgOverlay === false)
     // 页面标题
     document.title = settings.value.siteTitle || 'NavHub'
 
     // 背景遮罩透明度
-    const bgOverlayOpacity = settings.value.theme.bgOverlayOpacity
-    document.documentElement.style.setProperty('--bg-overlay-opacity', String(bgOverlayOpacity ?? 0.12))
+    const bgOverlayOpacity = theme.bgOverlayOpacity
+    document.documentElement.style.setProperty('--bg-overlay-opacity', String(bgOverlayOpacity ?? 1))
 
     // 背景模糊强度
-    const bgBlur = settings.value.theme.bgBlur
+    const bgBlur = theme.bgBlur
     if (bgBlur !== undefined && bgBlur > 0) {
       document.documentElement.style.setProperty('--bg-blur', bgBlur + 'px')
     } else {
@@ -201,8 +223,8 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     // 搜索框自定义颜色（rgba 格式，支持透明度）
-    const searchColor = settings.value.theme.searchColor
-    const searchOpacity = settings.value.theme.searchOpacity ?? 1
+    const searchColor = theme.searchColor
+    const searchOpacity = theme.searchOpacity ?? 1
     if (searchColor) {
       const rgb = hexToRgb(searchColor)
       if (rgb) {
@@ -217,8 +239,8 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     // 书签卡片自定义颜色（rgba 格式，支持透明度）
-    const cardColor = settings.value.theme.cardColor
-    const cardOpacity = settings.value.theme.cardOpacity ?? 1
+    const cardColor = theme.cardColor
+    const cardOpacity = theme.cardOpacity ?? 1
     if (cardColor) {
       const rgb = hexToRgb(cardColor)
       if (rgb) {
@@ -233,8 +255,8 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     // 自定义字体颜色 + 透明度
-    const textColor = settings.value.theme.textColor
-    const textOpacity = settings.value.theme.textOpacity ?? 1
+    const textColor = theme.textColor
+    const textOpacity = theme.textOpacity ?? 1
     if (textColor || textOpacity < 1) {
       let finalColor: string
       if (textColor) {
@@ -418,10 +440,10 @@ export const useSettingsStore = defineStore('settings', () => {
       settings.value.layout.toolbar = [
         { id: 'theme', visible: true },
         { id: 'network', visible: true },
+        { id: 'filter', visible: true },
         { id: 'add', visible: true },
         { id: 'expand', visible: true },
         { id: 'user', visible: true },
-        { id: 'filter', visible: true },
         { id: 'backTop', visible: true },
       ]
     }
@@ -454,12 +476,6 @@ export const useSettingsStore = defineStore('settings', () => {
     save()
   }
 
-  /** 设置分类布局模式（单列 / 双列） */
-  function setCategoryLayout(layout: CategoryLayout) {
-    settings.value.layout.categoryLayout = layout
-    save()
-  }
-
   /** 设置卡片尺寸（small / medium / large） */
   function setCardSize(size: UserSettings['layout']['cardSize']) {
     settings.value.layout.cardSize = size
@@ -478,9 +494,9 @@ export const useSettingsStore = defineStore('settings', () => {
     save()
   }
 
-  /** 切换紧凑模式 */
-  function toggleCompact() {
-    settings.value.layout.compactMode = !settings.value.layout.compactMode
+  /** 切换是否显示分类白框 */
+  function toggleCategoryCard() {
+    settings.value.layout.showCategoryCard = !settings.value.layout.showCategoryCard
     save()
   }
 
@@ -567,7 +583,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function init() {
     applyTheme()
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (settings.value.theme.mode === 'auto') applyTheme()
+      if (settings.value?.theme?.mode === 'auto') applyTheme()
     })
     getBgImageBlob().then(blob => {
       if (blob) {
@@ -590,7 +606,7 @@ export const useSettingsStore = defineStore('settings', () => {
    * 确保同步拉取的数据能立即反映到 UI
    */
   async function reloadFromStorage() {
-    settings.value = storageGet('userSettings', defaultSettings)
+    settings.value = deepMergeWithDefaults(storageGet('userSettings', {}), defaultSettings)
     try {
       const blob = await getBgImageBlob()
       revokeBgUrl()
@@ -605,22 +621,16 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     settings,
-    isDark,
     currentEngine,
     effectiveBgImage,
-    save,
     init,
     applyTheme,
     reloadFromStorage,
-    setSiteTitle,
-    setSiteDescription,
     setThemeMode,
     setPrimaryColor,
     setBorderRadius,
     setBackgroundImage,
     setBackgroundColor,
-    toggleGlassEffect,
-    toggleBgOverlay,
     setBgOverlayOpacity,
     setBgBlur,
     setSearchColor,
@@ -632,11 +642,9 @@ export const useSettingsStore = defineStore('settings', () => {
     getToolbar,
     toggleToolbarButton,
     reorderToolbar,
-    setCategoryLayout,
     setCardSize,
-    setColumns,
     toggleDescription,
-    toggleCompact,
+    toggleCategoryCard,
     setDefaultEngine,
     addEngine,
     removeEngine,

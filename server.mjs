@@ -1,7 +1,7 @@
 /**
  * NavHub 后端服务 - 纯 Node.js HTTP 服务器
  * 提供用户认证、数据同步、资源管理、管理员功能等 API
- * 监听端口: 3456
+ * 同时提供静态文件服务（生产环境部署时使用）
  */
 import http from 'node:http'
 import crypto from 'node:crypto'
@@ -13,6 +13,25 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DATA_DIR = path.join(__dirname, 'data')
 const DATA_FILE = path.join(DATA_DIR, 'server-data.json')
+const DIST_DIR = path.join(__dirname, 'dist')
+
+/** MIME 类型映射 */
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+}
 
 // ==================== 文件持久化存储 ====================
 
@@ -174,6 +193,35 @@ function resHash(data) {
 /** 请求体最大限制: 50MB */
 const MAX_BODY_SIZE = 50 * 1024 * 1024
 
+// ==================== 静态文件服务 ====================
+
+/** dist 目录是否存在（生产环境构建产物） */
+const hasDist = fs.existsSync(DIST_DIR)
+
+function serveStatic(req, res, url) {
+  let filePath = path.join(DIST_DIR, decodeURIComponent(url.pathname))
+  if (filePath.endsWith('/')) filePath = path.join(filePath, 'index.html')
+
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext = path.extname(filePath)
+    const mime = MIME[ext] || 'application/octet-stream'
+    const content = fs.readFileSync(filePath)
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable' })
+    res.end(content)
+  } else {
+    // SPA 回退：所有未匹配路径返回 index.html
+    const indexPath = path.join(DIST_DIR, 'index.html')
+    if (fs.existsSync(indexPath)) {
+      const content = fs.readFileSync(indexPath)
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(content)
+    } else {
+      res.writeHead(404)
+      res.end('Not Found')
+    }
+  }
+}
+
 // ==================== HTTP 服务器主逻辑 ====================
 
 const server = http.createServer(async (req, res) => {
@@ -188,8 +236,17 @@ const server = http.createServer(async (req, res) => {
     return res.end()
   }
 
-  // 解析 URL，提取 API 路径段
   const url = new URL(req.url, 'http://localhost')
+
+  // 非 /api 请求：静态文件服务（仅当 dist 目录存在时）
+  if (!url.pathname.startsWith('/api/') && url.pathname !== '/api') {
+    if (hasDist) return serveStatic(req, res, url)
+    res.writeHead(404)
+    res.end('Not Found')
+    return
+  }
+
+  // 解析 URL，提取 API 路径段
   const parts = url.pathname.replace('/api/', '').split('/').filter(Boolean)
   const action = parts[0]
 
@@ -262,7 +319,7 @@ const server = http.createServer(async (req, res) => {
 
       const token = randomHex(32)
       tokens.set(token, username)
-      saveToDiskDebounced()
+      saveToDisk() // 注册时立即保存token，防止重启丢失
 
       console.log(`[注册] ${username} role=${role}`)
       return json(res, { success: true, token, username, role })
@@ -284,7 +341,7 @@ const server = http.createServer(async (req, res) => {
 
       const token = randomHex(32)
       tokens.set(token, username)
-      saveToDiskDebounced()
+      saveToDisk() // 登录时立即保存token，防止重启丢失
 
       console.log(`[登录] ${username} rememberMe=${rememberMe}`)
       return json(res, { success: true, token, username, role: user.role || 'user' })
@@ -303,6 +360,15 @@ const server = http.createServer(async (req, res) => {
       if (existing && clientVersion > 0 && clientVersion < existing.version) {
         return json(res, {
           error: '数据冲突，请先拉取最新数据',
+          conflict: true,
+          serverVersion: existing.version,
+        }, 409)
+      }
+
+      // 防止空数据覆盖：客户端版本为0但服务器已有数据时，拒绝推送
+      if (existing && clientVersion === 0 && existing.version > 0) {
+        return json(res, {
+          error: '本地数据为空，请先拉取服务器数据',
           conflict: true,
           serverVersion: existing.version,
         }, 409)
@@ -340,13 +406,23 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(204)
         return res.end()
       }
+      const existing = dataStore.get(username)
+      const clientVersion = body.data?.version || 0
+
+      // 版本冲突检测：客户端版本落后于服务端时静默忽略，避免覆盖新数据
+      if (existing && clientVersion > 0 && clientVersion < existing.version) {
+        console.log(`[Beacon跳过] ${username} 客户端版本${clientVersion} < 服务端版本${existing.version}`)
+        res.writeHead(204)
+        return res.end()
+      }
+
       const syncData = {
         settings: body.data.settings,
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
-        version: (body.data?.version || 0) + 1,
+        version: (existing?.version || 0) + 1,
       }
       dataStore.set(username, syncData)
       saveToDiskDebounced()
@@ -537,11 +613,11 @@ const server = http.createServer(async (req, res) => {
 
 // ==================== 启动服务器 ====================
 
-const PORT = 3456
-server.listen(PORT, () => {
-  console.log(`本地API服务运行在 http://localhost:${PORT}/api`)
-  console.log('端点: POST /api/register, /api/login, /api/logout, /api/sync, /api/pull, /api/upload-resource')
-  console.log('      GET  /api/me, /api/health, /api/resource/:id')
-  console.log('管理员: POST /api/admin/users, /api/admin/add-user, /api/admin/delete-user, /api/admin/toggle-registration, /api/admin/status')
+const PORT = parseInt(process.env.PORT || '8888', 10)
+const HOST = process.env.HOST || '0.0.0.0'
+server.listen(PORT, HOST, () => {
+  console.log(`NavHub 服务运行在 http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`)
+  if (hasDist) console.log('静态文件服务: dist/ 目录')
+  console.log('API 端点: /api/register, /api/login, /api/sync, /api/pull')
   console.log('第一个注册的用户自动成为管理员')
 })

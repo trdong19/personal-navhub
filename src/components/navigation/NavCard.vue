@@ -1,25 +1,47 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import type { NavLink } from '@/types'
 import { useNetworkStore } from '@/stores/network'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
 import { getFaviconCandidates } from '@/utils/helpers'
+import { useTouchDrag } from '@/composables/useTouchDrag'
 
 const cardRef = ref<HTMLElement | null>(null)
+const handleRef = ref<HTMLElement | null>(null)
 const isDragging = ref(false)
 const isDragOver = ref(false)
 
+// 长按相关
+let longPressTimer: number | null = null
+const LONG_PRESS_DURATION = 300 // 长按时间，单位毫秒
+let touchStartX = 0
+let touchStartY = 0
+let isTouchingHandle = false
+
 const props = defineProps<{
   link: NavLink
+  linkIds?: string[]
+  categoryId?: string
+  batchDragging?: boolean
 }>()
+
+watch(() => props.batchDragging, (newVal) => {
+  if (!newVal) {
+    isDragOver.value = false
+  }
+})
 
 const emit = defineEmits<{
   'edit': [id: string]
   'dragstart': [id: string]
   'dragover': [id: string]
+  'touchdragover': [targetId: string, categoryId: string]
+  'touchdragleave': []
   'dragend': []
   'contextmenu': [payload: { id: string; x: number; y: number }]
+  'dragovercategory': [categoryId: string]
+  'touchdrop': [categoryId: string]
 }>()
 
 const networkStore = useNetworkStore()
@@ -48,17 +70,14 @@ const faviconSrc = computed(() => {
   if (props.link.cachedIconData) return props.link.cachedIconData
   return faviconCandidates.value[faviconIndex.value] || ''
 })
-const faviconLoaded = ref(false)
 const faviconFailed = ref(false)
 
 watch(faviconCandidates, () => {
   faviconIndex.value = 0
-  faviconLoaded.value = false
   faviconFailed.value = false
 })
 
 function onFaviconLoad() {
-  faviconLoaded.value = true
   faviconFailed.value = false
   if (!props.link.cachedIconData && !props.link.iconUrl && faviconSrc.value) {
     cacheFaviconAsBase64()
@@ -87,7 +106,6 @@ function onFaviconError() {
     faviconIndex.value = nextIndex
   } else {
     faviconFailed.value = true
-    faviconLoaded.value = false
     if (!props.link.cachedIconData && !props.link.iconUrl) {
       navStore.updateLink(props.link.id, { faviconFetchFailed: true })
     }
@@ -112,7 +130,6 @@ const letterIcon = computed(() => {
 const cardStyle = computed(() => {
   const style: Record<string, string> = {}
   if (props.link.color) {
-    style['--card-custom-color'] = props.link.color
     style['background'] = props.link.color
   }
   if (props.link.opacity !== undefined && props.link.opacity < 1) {
@@ -135,22 +152,31 @@ const cardClass = computed(() => [
   'nav-card',
   `size-${settingsStore.settings.layout.cardSize}`,
   {
-    'compact': settingsStore.settings.layout.compactMode,
     'no-url': currentUrl.value === '#',
-    'pinned': props.link.pinned,
     'has-custom-color': !!props.link.color,
     'card-dragging': isDragging.value,
-    'card-drag-over': isDragOver.value,
+    'card-drag-over': isDragOver.value || navStore.dropTargetLinkId === props.link.id,
+    'batch-drop-target': (isDragOver.value || navStore.dropTargetLinkId === props.link.id) && props.batchDragging,
     'selected': isSelected.value,
     'selection-mode': navStore.selectionMode,
+    'range-start': navStore.rangeStartId === props.link.id,
   },
 ])
 
 const isSelected = computed(() => navStore.selectedLinkIds.has(props.link.id))
 
-function handleClick() {
+function handleClick(e?: MouseEvent) {
   if (navStore.selectionMode) {
-    navStore.toggleLinkSelection(props.link.id)
+    if (navStore.rangeSelectMode) {
+      // 范围选择模式
+      navStore.handleRangeSelectClick(props.link.id, () => props.linkIds || [])
+    } else if (e?.shiftKey) {
+      // Shift键多选
+      navStore.shiftSelectLinks(props.link.id, navStore.lastSelectedLinkId || undefined, () => props.linkIds || [])
+    } else {
+      // 普通单选
+      navStore.toggleLinkSelection(props.link.id)
+    }
     return
   }
   if (currentUrl.value === '#') return
@@ -168,11 +194,72 @@ function handleContextMenu(e: MouseEvent) {
   })
 }
 
-function handleDragStart(e: DragEvent) {
+// 处理触摸开始 - 用于长按检测
+function handleTouchStartForLongPress(e: TouchEvent) {
+  if (e.touches.length !== 1) return
+  const touch = e.touches[0]
+
+  // 如果触摸在拖拽手柄上，不触发长按
+  const target = e.target as HTMLElement
+  if (target.closest('.drag-handle')) {
+    return
+  }
+
+  touchStartX = touch.clientX
+  touchStartY = touch.clientY
+  longPressTimer = window.setTimeout(() => {
+    longPressTimer = null
+    // 拖拽中或触摸手柄时不触发右键菜单
+    if (isDragging.value || isTouchingHandle) return
+    // 触发长按事件
+    emit('contextmenu', {
+      id: props.link.id,
+      x: Math.min(touchStartX, window.innerWidth - 180),
+      y: Math.min(touchStartY, window.innerHeight - 260),
+    })
+    // 触觉反馈
+    if (navigator.vibrate) navigator.vibrate(30)
+  }, LONG_PRESS_DURATION)
+}
+
+// 处理触摸移动 - 取消长按
+function handleTouchMoveForLongPress(e: TouchEvent) {
+  if (!longPressTimer) return
+  const touch = e.touches[0]
+  const deltaX = Math.abs(touch.clientX - touchStartX)
+  const deltaY = Math.abs(touch.clientY - touchStartY)
+  // 如果移动超过 10px，取消长按
+  if (deltaX > 10 || deltaY > 10) {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer)
+      longPressTimer = null
+    }
+  }
+}
+
+// 处理触摸结束 - 取消长按
+function handleTouchEndForLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+  isTouchingHandle = false
+}
+
+// 拖拽手柄触摸开始
+function handleDragHandleTouchStart(e: TouchEvent) {
+  isTouchingHandle = true
+  handleTouchStart(e)
+}
+
+// 桌面端：使用原生 drag & drop API
+function handleNativeDragStart(e: DragEvent) {
+  if (currentUrl.value === '#') return
   isDragging.value = true
   document.body.classList.add('is-dragging')
   e.dataTransfer!.effectAllowed = 'move'
   e.dataTransfer!.setData('text/plain', props.link.id)
+  
   if (cardRef.value) {
     const clone = cardRef.value.cloneNode(true) as HTMLElement
     clone.style.width = cardRef.value.offsetWidth + 'px'
@@ -182,11 +269,12 @@ function handleDragStart(e: DragEvent) {
     clone.style.top = '-9999px'
     clone.style.left = '-9999px'
     clone.style.boxShadow = '0 8px 32px rgba(99, 102, 241, 0.25)'
-    clone.style.borderRadius = '14px'
+    clone.style.borderRadius = 'var(--radius)'
     document.body.appendChild(clone)
     e.dataTransfer!.setDragImage(clone, cardRef.value.offsetWidth / 2, 20)
     requestAnimationFrame(() => document.body.removeChild(clone))
   }
+  
   emit('dragstart', props.link.id)
 }
 
@@ -209,6 +297,44 @@ function handleDragEnd() {
   document.body.classList.remove('is-dragging')
   emit('dragend')
 }
+
+const { handleTouchStart, cleanup } = useTouchDrag({
+  cardRef,
+  handleRef,
+  onDragStart: (id) => {
+    isDragging.value = true
+    emit('dragstart', id)
+  },
+  onDragOver: (targetId, categoryId) => {
+    isDragOver.value = true
+    emit('touchdragover', targetId, categoryId)
+  },
+  onDragEnd: (targetCategoryId) => {
+    isDragging.value = false
+    isDragOver.value = false
+    document.body.classList.remove('is-dragging')
+    if (targetCategoryId) {
+      emit('touchdrop', targetCategoryId)
+    }
+    emit('dragend')
+  },
+  onDragOverCategory: (categoryId) => {
+    emit('dragovercategory', categoryId)
+  },
+  onDragLeave: () => {
+    isDragOver.value = false
+    emit('touchdragleave')
+  },
+})
+
+onUnmounted(() => {
+  cleanup()
+  // 清理长按定时器
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+})
 </script>
 
 <template>
@@ -216,15 +342,22 @@ function handleDragEnd() {
     ref="cardRef"
     :class="cardClass"
     :style="cardStyle"
-    :title="link.description || link.title"
+    :title="link.description ? `${link.title} — ${link.description}` : link.title"
     :data-link-id="link.id"
+    role="listitem"
+    :aria-label="link.description ? `${link.title} - ${link.description}` : `${link.title} - 书签`"
+    :aria-grabbed="isDragging"
     draggable="true"
     @click="handleClick"
     @contextmenu="handleContextMenu"
-    @dragstart="handleDragStart"
+    @dragstart="handleNativeDragStart"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
     @dragend="handleDragEnd"
+    @touchstart.passive="handleTouchStartForLongPress"
+    @touchmove.passive="handleTouchMoveForLongPress"
+    @touchend="handleTouchEndForLongPress"
+    @touchcancel="handleTouchEndForLongPress"
   >
     <Transition name="check-fade">
       <div v-if="navStore.selectionMode" class="selection-check" :class="{ checked: isSelected }">
@@ -232,15 +365,27 @@ function handleDragEnd() {
       </div>
     </Transition>
     <div class="card-content">
-      <div class="card-icon">
-        <img
-          v-if="faviconSrc && !showPlaceholder"
-          :src="faviconSrc"
-          :alt="link.title"
-          @load="onFaviconLoad"
-          @error="onFaviconError"
-        />
-        <div v-else class="icon-placeholder">{{ letterIcon }}</div>
+      <div class="card-icon-wrapper">
+        <div class="card-icon">
+          <img
+            v-if="faviconSrc && !showPlaceholder"
+            :src="faviconSrc"
+            :alt="link.title"
+            @load="onFaviconLoad"
+            @error="onFaviconError"
+          />
+          <div v-else class="icon-placeholder">{{ letterIcon }}</div>
+        </div>
+        <div ref="handleRef" class="drag-handle" @touchstart.stop="handleDragHandleTouchStart" @contextmenu.stop.prevent>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="9" cy="6" r="1.5"/>
+            <circle cx="15" cy="6" r="1.5"/>
+            <circle cx="9" cy="12" r="1.5"/>
+            <circle cx="15" cy="12" r="1.5"/>
+            <circle cx="9" cy="18" r="1.5"/>
+            <circle cx="15" cy="18" r="1.5"/>
+          </svg>
+        </div>
       </div>
       <div class="card-info">
         <div class="card-title">{{ link.title }}</div>
@@ -258,12 +403,23 @@ function handleDragEnd() {
   padding: 16px;
   background: var(--bg-card);
   border: none;
-  border-radius: 16px;
+  /* 圆角跟随全局设置 */
+  border-radius: var(--radius);
   user-select: none;
   will-change: transform, opacity;
+  contain: layout style paint; /* 提升渲染性能 */
   transition: box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  /* Grid 子元素默认 min-width: auto 会阻止内容收缩，导致 text-overflow 失效 */
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 拖拽期间禁用过渡动画，提高性能 */
+.category-list.batch-dragging .nav-card,
+.nav-card.card-dragging {
+  transition: none !important;
 }
 
 .nav-card:hover {
@@ -282,6 +438,11 @@ function handleDragEnd() {
   transform: scale(1.03);
 }
 
+.nav-card.batch-drop-target {
+  border-left: 3px solid var(--primary);
+  transform: translateX(4px);
+}
+
 .nav-card.no-url {
   opacity: 0.4;
   cursor: not-allowed;
@@ -296,13 +457,21 @@ function handleDragEnd() {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-icon-wrapper {
+  position: relative;
+  flex-shrink: 0;
 }
 
 .card-icon {
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: 14px;
+  /* 图标容器圆角略小于卡片 */
+  border-radius: calc(var(--radius) - 2px);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -315,6 +484,28 @@ function handleDragEnd() {
   height: 28px;
   object-fit: contain;
   image-rendering: auto;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 0;
+  left: -20px;
+  right: -20px;
+  bottom: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--primary);
+  cursor: grab;
+}
+
+@media (max-width: 768px) {
+  .drag-handle {
+    display: flex;
+    opacity: 0;
+  }
 }
 
 .icon-placeholder {
@@ -332,6 +523,7 @@ function handleDragEnd() {
 .card-info {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .card-title {
@@ -352,14 +544,32 @@ function handleDragEnd() {
   text-overflow: ellipsis;
 }
 
+.nav-card.size-tiny {
+  padding: 6px 8px;
+  border-radius: calc(var(--radius) - 4px);
+}
+
+.nav-card.size-tiny .card-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: calc(var(--radius) - 6px);
+}
+
+.nav-card.size-tiny .card-title {
+  font-size: 12px;
+}
+
 .nav-card.size-small {
   padding: 10px 12px;
+  /* 小尺寸卡片圆角略小 */
+  border-radius: calc(var(--radius) - 2px);
 }
 
 .nav-card.size-small .card-icon {
   width: 32px;
   height: 32px;
-  border-radius: 12px;
+  /* 小尺寸图标容器圆角更小 */
+  border-radius: calc(var(--radius) - 4px);
 }
 
 .nav-card.size-small .card-title {
@@ -373,7 +583,8 @@ function handleDragEnd() {
 .nav-card.size-large .card-icon {
   width: 48px;
   height: 48px;
-  border-radius: 16px;
+  /* 大尺寸图标容器圆角与卡片一致 */
+  border-radius: var(--radius);
 }
 
 .nav-card.size-large .card-title {
@@ -382,18 +593,6 @@ function handleDragEnd() {
 
 .nav-card.size-large .card-desc {
   font-size: 13px;
-}
-
-.nav-card.compact {
-  padding: 10px 14px;
-}
-
-.nav-card.compact .card-content {
-  gap: 10px;
-}
-
-.nav-card.has-custom-color {
-  border-color: transparent;
 }
 
 .nav-card.has-custom-color .card-title {
@@ -413,7 +612,8 @@ function handleDragEnd() {
 @media (max-width: 768px) {
   .nav-card {
     padding: 12px;
-    border-radius: 14px;
+    /* 平板端圆角略小 */
+    border-radius: calc(var(--radius) - 2px);
   }
 
   .card-content {
@@ -423,7 +623,8 @@ function handleDragEnd() {
   .card-icon {
     width: 36px;
     height: 36px;
-    border-radius: 12px;
+    /* 平板端图标容器圆角 */
+    border-radius: calc(var(--radius) - 4px);
   }
 
   .card-icon img {
@@ -450,6 +651,24 @@ function handleDragEnd() {
 
 .nav-card.selected {
   box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.2);
+}
+
+.nav-card.range-start {
+  box-shadow: 0 0 0 3px var(--primary), 0 0 0 6px rgba(99, 102, 241, 0.15), 0 4px 16px rgba(99, 102, 241, 0.2);
+}
+
+.nav-card.range-start::before {
+  content: '起点';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--primary);
+  color: white;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  z-index: 10;
 }
 
 .selection-check {
@@ -487,67 +706,66 @@ function handleDragEnd() {
 
 @media (max-width: 480px) {
   .nav-card {
-    padding: 10px 12px;
-    border-radius: 12px;
+    padding: 12px;
+    /* 手机端圆角更小 */
+    border-radius: calc(var(--radius) - 4px);
+    min-height: 56px;
+  }
+
+  .nav-card.size-tiny {
+    padding: 6px 8px;
+    min-height: 0;
   }
 
   .card-icon {
     width: 32px;
     height: 32px;
-    border-radius: 10px;
+    /* 手机端图标容器圆角 */
+    border-radius: calc(var(--radius) - 6px);
+  }
+
+  .nav-card.size-tiny .card-icon {
+    width: 24px;
+    height: 24px;
   }
 
   .card-icon img {
     width: 22px;
     height: 22px;
   }
-}
-</style>
 
-<style>
-.context-menu {
-  position: fixed;
-  z-index: 10000;
-  background: var(--bg-card);
-  border: none;
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  min-width: 170px;
-  padding: 4px;
-  animation: ctxFadeIn 0.12s ease;
-}
+  .nav-card.size-tiny .card-icon img {
+    width: 16px;
+    height: 16px;
+  }
 
-.ctx-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
+  .card-title {
+    font-size: 13px;
+  }
 
-.ctx-item:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
+  .nav-card.size-tiny .card-title {
+    font-size: 12px;
+  }
 
-.ctx-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  .card-desc {
+    font-size: 11px;
+  }
+
+  .card-content {
+    gap: 10px;
+  }
+
+  .nav-card.size-tiny .card-content {
+    gap: 8px;
+  }
+
+  .selection-check {
+    top: 6px;
+    right: 6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+  }
 }
 
-.ctx-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 8px;
-}
-
-@keyframes ctxFadeIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
 </style>

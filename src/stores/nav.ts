@@ -164,6 +164,12 @@ export const useNavStore = defineStore('nav', () => {
 
   const selectionMode = ref(false)
   const selectedLinkIds = ref<Set<string>>(new Set())
+  const lastSelectedLinkId = ref<string | null>(null)
+  // 手机端范围选择模式
+  const rangeSelectMode = ref(false)
+  const rangeStartId = ref<string | null>(null)
+  // 拖拽目标卡片ID（触屏端跨分类拖拽时用于目标位置指示）
+  const dropTargetLinkId = ref<string | null>(null)
 
   function enterSelectionMode() {
     selectionMode.value = true
@@ -173,6 +179,34 @@ export const useNavStore = defineStore('nav', () => {
   function exitSelectionMode() {
     selectionMode.value = false
     selectedLinkIds.value = new Set()
+    lastSelectedLinkId.value = null
+    rangeSelectMode.value = false
+    rangeStartId.value = null
+  }
+
+  // 范围选择模式切换
+  function toggleRangeSelectMode() {
+    if (rangeSelectMode.value) {
+      rangeSelectMode.value = false
+      rangeStartId.value = null
+    } else {
+      rangeSelectMode.value = true
+      rangeStartId.value = null
+    }
+  }
+
+  // 范围选择点击处理
+  function handleRangeSelectClick(linkId: string, getLinksInOrder?: () => string[]) {
+    if (!rangeStartId.value) {
+      // 第一次点击：设置起始点
+      rangeStartId.value = linkId
+      toggleLinkSelection(linkId)
+    } else {
+      // 第二次点击：执行范围选择
+      shiftSelectLinks(linkId, rangeStartId.value, getLinksInOrder)
+      rangeSelectMode.value = false
+      rangeStartId.value = null
+    }
   }
 
   function toggleLinkSelection(linkId: string) {
@@ -183,31 +217,151 @@ export const useNavStore = defineStore('nav', () => {
       newSet.add(linkId)
     }
     selectedLinkIds.value = newSet
+    lastSelectedLinkId.value = linkId
+  }
+
+  function shiftSelectLinks(targetLinkId: string, startLinkId?: string, getLinksInOrder?: () => string[]) {
+    if (!startLinkId) {
+      toggleLinkSelection(targetLinkId)
+      return
+    }
+    if (startLinkId === targetLinkId) {
+      return
+    }
+    const linkIdsInOrder = getLinksInOrder ? getLinksInOrder() : links.value.map(l => l.id)
+    const startIndex = linkIdsInOrder.indexOf(startLinkId)
+    const targetIndex = linkIdsInOrder.indexOf(targetLinkId)
+    if (startIndex === -1 || targetIndex === -1) {
+      toggleLinkSelection(targetLinkId)
+      return
+    }
+    const newSet = new Set(selectedLinkIds.value)
+    const step = startIndex < targetIndex ? 1 : -1
+    for (let i = startIndex; step > 0 ? i <= targetIndex : i >= targetIndex; i += step) {
+      newSet.add(linkIdsInOrder[i])
+    }
+    selectedLinkIds.value = newSet
+    lastSelectedLinkId.value = targetLinkId
   }
 
   function selectAllLinks() {
     selectedLinkIds.value = new Set(links.value.map(l => l.id))
   }
 
+  // 批量操作
+  function batchPinLinks(): number {
+    const count = selectedLinkIds.value.size
+    if (count === 0) return 0
+    for (const link of links.value) {
+      if (selectedLinkIds.value.has(link.id) && !link.pinned) {
+        link.pinned = true
+        link.pinnedOrder = (link.pinnedOrder || 0)
+      }
+    }
+    const pinnedLinks = links.value.filter(l => selectedLinkIds.value.has(l.id) && l.pinned)
+    const maxPinnedOrder = pinnedLinks.length > 0 
+      ? Math.max(...links.value.filter(l => l.pinned).map(l => l.pinnedOrder || 0))
+      : -1
+    let order = maxPinnedOrder + 1
+    for (const link of links.value) {
+      if (selectedLinkIds.value.has(link.id) && link.pinned) {
+        link.pinnedOrder = order++
+      }
+    }
+    saveLinks()
+    exitSelectionMode()
+    return count
+  }
+
+  // 删除撤回
+  const deletedLinksCache = ref<NavLink[]>([])
+
+  // 移动撤回
+  interface MoveRecord {
+    linkId: string
+    oldCategory: string
+    oldOrder: number
+  }
+  const moveCache = ref<MoveRecord[]>([])
+
   function batchDeleteLinks(): number {
     const count = selectedLinkIds.value.size
     if (count === 0) return 0
+    const linksToDelete = links.value.filter(l => selectedLinkIds.value.has(l.id))
+    deletedLinksCache.value = [...linksToDelete]
     links.value = links.value.filter(l => !selectedLinkIds.value.has(l.id))
     saveLinks()
     exitSelectionMode()
     return count
   }
 
-  function batchMoveLinks(categoryId: string): number {
+  function restoreDeletedLinks(): number {
+    const count = deletedLinksCache.value.length
+    if (count === 0) return 0
+    links.value.push(...deletedLinksCache.value)
+    deletedLinksCache.value = []
+    saveLinks()
+    return count
+  }
+
+  function restoreMovedLinks(): number {
+    const count = moveCache.value.length
+    if (count === 0) return 0
+    for (const record of moveCache.value) {
+      const link = links.value.find(l => l.id === record.linkId)
+      if (link) {
+        link.category = record.oldCategory
+        link.order = record.oldOrder
+      }
+    }
+    moveCache.value = []
+    saveLinks()
+    return count
+  }
+
+  function recordMove(linkId: string) {
+    const link = links.value.find(l => l.id === linkId)
+    if (link) {
+      moveCache.value = [{ linkId, oldCategory: link.category, oldOrder: link.order }]
+    }
+  }
+
+  function batchMoveLinks(categoryId: string, targetLinkId?: string): number {
     const count = selectedLinkIds.value.size
     if (count === 0) return 0
+    
+    const records: MoveRecord[] = []
+    for (const link of links.value) {
+      if (selectedLinkIds.value.has(link.id)) {
+        records.push({ linkId: link.id, oldCategory: link.category, oldOrder: link.order })
+      }
+    }
+    moveCache.value = records
+    
     for (const link of links.value) {
       if (selectedLinkIds.value.has(link.id)) {
         link.category = categoryId
       }
     }
+    
+    if (targetLinkId) {
+      const categoryLinks = links.value.filter(l => l.category === categoryId)
+      const targetIndex = categoryLinks.findIndex(l => l.id === targetLinkId)
+      
+      if (targetIndex !== -1) {
+        const targetOrder = categoryLinks[targetIndex].order
+        
+        for (const link of links.value) {
+          if (selectedLinkIds.value.has(link.id)) {
+            link.order = targetOrder - 0.5
+          } else if (link.category === categoryId && link.order >= targetOrder) {
+            link.order += count
+          }
+        }
+      }
+    }
+    
     saveLinks()
-    exitSelectionMode()
     return count
   }
 
@@ -282,10 +436,14 @@ export const useNavStore = defineStore('nav', () => {
   }
 
   /**
-   * 删除书签
+   * 删除书签（支持撤回）
    * @param id - 书签 ID
    */
   function deleteLink(id: string) {
+    const linkToDelete = links.value.find(l => l.id === id)
+    if (linkToDelete) {
+      deletedLinksCache.value = [linkToDelete]
+    }
     links.value = links.value.filter(l => l.id !== id)
     saveLinks()
   }
@@ -423,34 +581,6 @@ export const useNavStore = defineStore('nav', () => {
   // ==================== 导入导出 ====================
 
   /**
-   * 批量导入书签（去重：URL 相同的跳过）
-   * @param items - 要导入的书签数组
-   * @returns 实际导入的数量
-   */
-  function importLinks(items: { title: string; url: string; category?: string; tags?: string[] }[]) {
-    let imported = 0
-    for (const item of items) {
-      const exists = links.value.some(l =>
-        l.urls.intranet === item.url ||
-        l.urls.extranet === item.url ||
-        l.urls.tunnel === item.url
-      )
-      if (!exists) {
-        const result = addLink({
-          title: item.title,
-          icon: 'link',
-          category: item.category || 'tools',
-          urls: { extranet: item.url },
-          tags: item.tags || [],
-          pinned: false,
-        })
-        if (result) imported++
-      }
-    }
-    return imported
-  }
-
-  /**
    * 导出所有数据为 JSON 字符串
    * @returns 格式化的 JSON 字符串
    */
@@ -526,6 +656,8 @@ export const useNavStore = defineStore('nav', () => {
     links.value = ensurePinnedOrder(storageGet('navLinks', defaultLinks))
     categories.value = storageGet('navCategories', defaultCategories)
     accessRecords.value = storageGet('accessRecords', [])
+    // 触发全局事件通知组件数据已更新
+    window.dispatchEvent(new CustomEvent('nav-data-reloaded'))
   }
 
   async function fetchAndCacheFavicon(link: NavLink): Promise<void> {
@@ -605,7 +737,6 @@ export const useNavStore = defineStore('nav', () => {
     setLinkFilter,
     setTagFilter,
     toggleTagFilter,
-    importLinks,
     exportData,
     importData,
     getTopLinks,
@@ -620,7 +751,20 @@ export const useNavStore = defineStore('nav', () => {
     exitSelectionMode,
     toggleLinkSelection,
     selectAllLinks,
+    shiftSelectLinks,
     batchDeleteLinks,
     batchMoveLinks,
+    batchPinLinks,
+    restoreDeletedLinks,
+    restoreMovedLinks,
+    recordMove,
+    deletedLinksCache,
+    moveCache,
+    lastSelectedLinkId,
+    rangeSelectMode,
+    rangeStartId,
+    dropTargetLinkId,
+    toggleRangeSelectMode,
+    handleRangeSelectClick,
   }
 })

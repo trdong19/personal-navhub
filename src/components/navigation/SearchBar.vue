@@ -2,12 +2,36 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useNavStore } from '@/stores/nav'
-import { getEngineFaviconCandidates } from '@/utils/helpers'
+import { useNetworkStore } from '@/stores/network'
+import { getEngineFaviconCandidates, highlightMatch, getFaviconCandidates } from '@/utils/helpers'
 import { animateDropdown } from '@/composables/useAnimation'
 import { pinyinMatch } from '@/utils/pinyin'
+import type { NavLink } from '@/types'
 
 const settingsStore = useSettingsStore()
 const navStore = useNavStore()
+const networkStore = useNetworkStore()
+
+function getLinkIconSrc(link: NavLink): string {
+  if (link.cachedIconData) return link.cachedIconData
+  if (link.iconUrl) return link.iconUrl
+  if (link.faviconFetchFailed) return ''
+  const { urls } = link
+  const url = networkStore.currentType === 'intranet'
+    ? urls.intranet || urls.extranet || urls.tunnel
+    : networkStore.currentType === 'tunnel'
+      ? urls.tunnel || urls.extranet || urls.intranet
+      : urls.extranet || urls.intranet || urls.tunnel
+  if (!url) return ''
+  const candidates = getFaviconCandidates(url)
+  return candidates[0] || ''
+}
+
+function getLinkLetter(link: NavLink): string {
+  if (link.icon) return link.icon
+  const first = (link.title || '').charAt(0)
+  return first ? first.toUpperCase() : '?'
+}
 
 const query = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -16,6 +40,8 @@ const showEnginePicker = ref(false)
 const enginePickerRef = ref<HTMLElement | null>(null)
 const engineDropdownRef = ref<HTMLElement | null>(null)
 const suggestionsDropdownRef = ref<HTMLElement | null>(null)
+// 键盘导航：当前高亮的建议项索引，-1 表示未选中
+const activeIndex = ref(-1)
 
 const suggestions = computed(() => {
   if (!query.value.trim()) return []
@@ -80,11 +106,25 @@ function handleSelect(link: { urls: { intranet?: string; extranet?: string } }) 
   if (url) window.open(url, '_blank')
   query.value = ''
   showSuggestions.value = false
+  activeIndex.value = -1
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter') {
-    if (suggestions.value.length > 0) {
+  if (e.key === 'ArrowDown') {
+    // 向下移动高亮项
+    e.preventDefault()
+    activeIndex.value = Math.min(activeIndex.value + 1, suggestions.value.length - 1)
+    scrollToActive()
+  } else if (e.key === 'ArrowUp') {
+    // 向上移动高亮项
+    e.preventDefault()
+    activeIndex.value = Math.max(activeIndex.value - 1, -1)
+    scrollToActive()
+  } else if (e.key === 'Enter') {
+    // 如果有高亮项则选中，否则选第一个建议或执行搜索
+    if (activeIndex.value >= 0 && suggestions.value[activeIndex.value]) {
+      handleSelect(suggestions.value[activeIndex.value])
+    } else if (suggestions.value.length > 0) {
       handleSelect(suggestions.value[0])
     } else {
       handleSearch()
@@ -92,8 +132,21 @@ function handleKeydown(e: KeyboardEvent) {
   } else if (e.key === 'Escape') {
     query.value = ''
     showSuggestions.value = false
+    activeIndex.value = -1
     inputRef.value?.blur()
   }
+}
+
+/** 滚动当前高亮的建议项到可见区域 */
+function scrollToActive() {
+  nextTick(() => {
+    const container = suggestionsDropdownRef.value
+    if (!container) return
+    const activeEl = container.querySelector('.suggestion-item.active') as HTMLElement
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest' })
+    }
+  })
 }
 
 function handleFocus() {
@@ -135,7 +188,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   <div class="search-area">
     <div class="search-bar" :class="{ focused: showSuggestions && suggestions.length > 0 }">
       <div ref="enginePickerRef" class="engine-selector">
-        <button class="engine-btn" :title="'切换搜索引擎 (当前: ' + currentEngine.name + ')'" @click="showEnginePicker = !showEnginePicker">
+        <button class="engine-btn" :title="'切换搜索引擎 (当前: ' + currentEngine.name + ')'" :aria-label="'切换搜索引擎，当前: ' + currentEngine.name" aria-haspopup="listbox" :aria-expanded="showEnginePicker" @click="showEnginePicker = !showEnginePicker">
           <template v-if="(engineIconIndex[currentEngine.id] ?? 0) >= 0">
             <img :key="currentEngine.id + '-' + (engineIconIndex[currentEngine.id] || 0)" :src="getEngineIconSrc(currentEngine.urlTemplate, currentEngine.id)" class="engine-favicon" @error="(e: Event) => handleEngineFaviconError(e, currentEngine.urlTemplate, currentEngine.id)" />
           </template>
@@ -161,24 +214,30 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
         v-model="query"
         type="text"
         placeholder="搜索书签或输入关键词..."
+        aria-label="搜索书签"
         @keydown="handleKeydown"
         @focus="handleFocus"
-        @input="showSuggestions = query.trim().length > 0"
+        @input="showSuggestions = query.trim().length > 0; activeIndex = -1"
       />
       <button v-if="query" class="clear-btn" @click="query = ''; showSuggestions = false; inputRef?.focus()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
-    <div v-if="showSuggestions && suggestions.length > 0" ref="suggestionsDropdownRef" class="suggestions-dropdown">
+    <div v-if="showSuggestions && suggestions.length > 0" ref="suggestionsDropdownRef" class="suggestions-dropdown" role="listbox" aria-label="搜索建议">
       <div
-        v-for="link in suggestions"
+        v-for="(link, index) in suggestions"
         :key="link.id"
-        class="suggestion-item"
+        :class="['suggestion-item', { active: index === activeIndex }]"
+        role="option"
+        :aria-selected="index === activeIndex"
         @click="handleSelect(link)"
       >
-        <div class="suggestion-icon">🔗</div>
+        <div class="suggestion-icon">
+          <img v-if="getLinkIconSrc(link)" :src="getLinkIconSrc(link)" :alt="link.title" @error="($event.target as HTMLImageElement).style.display='none'" />
+          <span v-else class="suggestion-letter">{{ getLinkLetter(link) }}</span>
+        </div>
         <div class="suggestion-info">
-          <div class="suggestion-name">{{ link.title }}</div>
+          <div class="suggestion-name"><span v-html="highlightMatch(link.title, query)"></span></div>
           <div class="suggestion-desc">{{ link.description }}</div>
         </div>
         <div class="suggestion-url">{{ link.urls.extranet || link.urls.intranet }}</div>
@@ -203,7 +262,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: none;
-  border-radius: 16px;
+  /* 搜索栏圆角跟随全局设置 */
+  border-radius: var(--radius);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
@@ -229,7 +289,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   justify-content: center;
   width: 40px;
   height: 44px;
-  border-radius: 15px 0 0 15px;
+  /* 搜索引擎按钮左侧圆角 */
+  border-radius: calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px);
   color: var(--text-secondary);
   transition: all var(--transition);
 }
@@ -266,7 +327,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   left: 0;
   background: var(--bg-card);
   border: none;
-  border-radius: 14px;
+  /* 搜索引擎下拉菜单圆角 */
+  border-radius: calc(var(--radius) - 2px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   min-width: 180px;
   padding: 4px;
@@ -357,7 +419,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   right: 0;
   background: var(--bg-card);
   border: none;
-  border-radius: 14px;
+  /* 搜索建议下拉圆角 */
+  border-radius: calc(var(--radius) - 2px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   max-height: 360px;
   overflow-y: auto;
@@ -379,8 +442,11 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   background: var(--bg-hover);
 }
 
+.suggestion-item.active {
+  background: var(--bg-hover);
+}
+
 .suggestion-icon {
-  font-size: 16px;
   width: 34px;
   height: 34px;
   display: flex;
@@ -389,6 +455,19 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   background: var(--bg);
   border-radius: 10px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.suggestion-icon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.suggestion-letter {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
 }
 
 .suggestion-info {
@@ -427,13 +506,15 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   }
 
   .search-bar {
-    border-radius: 12px;
+    /* 平板端搜索栏圆角略小 */
+    border-radius: calc(var(--radius) - 2px);
   }
 
   .engine-selector .engine-btn {
     width: 36px;
     height: 40px;
-    border-radius: 11px 0 0 11px;
+    /* 平板端搜索引擎按钮圆角 */
+    border-radius: calc(var(--radius) - 3px) 0 0 calc(var(--radius) - 3px);
   }
 
   .search-bar input {
@@ -442,19 +523,22 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   }
 
   .suggestions-dropdown {
-    border-radius: 12px;
+    /* 平板端搜索建议下拉圆角 */
+    border-radius: calc(var(--radius) - 2px);
   }
 }
 
 @media (max-width: 480px) {
   .search-bar {
-    border-radius: 10px;
+    /* 手机端搜索栏圆角更小 */
+    border-radius: calc(var(--radius) - 4px);
   }
 
   .engine-selector .engine-btn {
     width: 32px;
     height: 36px;
-    border-radius: 9px 0 0 9px;
+    /* 手机端搜索引擎按钮圆角 */
+    border-radius: calc(var(--radius) - 5px) 0 0 calc(var(--radius) - 5px);
   }
 
   .search-bar input {

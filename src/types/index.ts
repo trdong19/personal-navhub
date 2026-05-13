@@ -13,8 +13,7 @@ export type NetworkType = 'intranet' | 'extranet' | 'tunnel'
 export type ThemeMode = 'light' | 'dark' | 'auto'
 
 /** 卡片尺寸 */
-export type CardSize = 'small' | 'medium' | 'large'
-export type CategoryLayout = 'single' | 'double'
+export type CardSize = 'tiny' | 'small' | 'medium' | 'large'
 
 /** 工具栏按钮 ID */
 export type ToolbarButtonId = 'theme' | 'network' | 'add' | 'expand' | 'filter' | 'backTop' | 'user'
@@ -129,7 +128,7 @@ export interface ThemeSettings {
   cardOpacity?: number
   /** 自定义字体颜色（hex） */
   textColor?: string
-  /** 字体颜色透明度 0-1 */
+  /** 自定义字体颜色透明度 0-1 */
   textOpacity?: number
 }
 
@@ -143,12 +142,10 @@ export interface LayoutSettings {
   cardSize: CardSize
   /** 是否显示书签描述 */
   showDescription: boolean
-  /** 紧凑模式开关 */
-  compactMode: boolean
   /** 工具栏按钮配置（顺序和可见性） */
   toolbar: ToolbarButtonConfig[]
-  /** 分类布局模式 */
-  categoryLayout: CategoryLayout
+  /** 显示分类白框 */
+  showCategoryCard: boolean
 }
 
 /** 工具栏按钮配置 */

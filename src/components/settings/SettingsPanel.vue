@@ -5,8 +5,136 @@ import { useSettingsStore } from '@/stores/settings'
 import { useAuth } from '@/composables/useAuth'
 import FileManager from './FileManager.vue'
 import type { ToolbarButtonId } from '@/types'
-import { getEngineFaviconCandidates } from '@/utils/helpers'
+import { getEngineFaviconCandidates, getAllFaviconFormats } from '@/utils/helpers'
 import { useToast } from '@/composables/useToast'
+
+/** 触摸拖拽排序状态 */
+let touchCatDragging = false
+let touchCatDragId: string | null = null
+let touchCatClone: HTMLElement | null = null
+let touchCatDropTargetId: string | null = null
+let touchCatStartY = 0
+let touchCatItemRect: DOMRect | null = null
+
+function handleCatTouchStart(e: TouchEvent, catId: string) {
+  const item = (e.currentTarget as HTMLElement)
+  touchCatDragId = catId
+  touchCatDragging = true
+  touchCatDropTargetId = null
+  touchCatStartY = e.touches[0].clientY
+  touchCatItemRect = item.getBoundingClientRect()
+
+  // 创建拖拽克隆
+  touchCatClone = item.cloneNode(true) as HTMLElement
+  touchCatClone.style.cssText = `
+    position: fixed;
+    left: ${touchCatItemRect.left}px;
+    top: ${touchCatItemRect.top}px;
+    width: ${touchCatItemRect.width}px;
+    height: ${touchCatItemRect.height}px;
+    z-index: 9999;
+    opacity: 0.85;
+    transform: rotate(1deg) scale(1.03);
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+    border-radius: 10px;
+    pointer-events: none;
+    transition: none;
+    background: var(--bg);
+    border: 1px solid var(--primary);
+  `
+  document.body.appendChild(touchCatClone)
+  item.classList.add('cat-dragging')
+
+  // 触觉反馈
+  if (navigator.vibrate) navigator.vibrate(30)
+
+  document.addEventListener('touchmove', handleCatDocTouchMove, { passive: false })
+  document.addEventListener('touchend', handleCatDocTouchEnd, { passive: true })
+  document.addEventListener('touchcancel', handleCatDocTouchEnd, { passive: true })
+}
+
+function handleCatDocTouchMove(e: TouchEvent) {
+  if (!touchCatDragging || !touchCatClone || !touchCatItemRect) return
+  e.preventDefault()
+
+  const touch = e.touches[0]
+  touchCatClone.style.left = touchCatItemRect.left + 'px'
+  touchCatClone.style.top = (touch.clientY - touchCatItemRect.height / 2) + 'px'
+
+  // 检测手指下方的排序项
+  const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (elemBelow) {
+    const sortItem = elemBelow.closest<HTMLElement>('.category-sort-item')
+    if (sortItem) {
+      // 通过遍历找到目标分类的 id
+      const items = document.querySelectorAll('.category-sort-item')
+      items.forEach(item => {
+        const id = item.getAttribute('data-cat-id')
+        if (item === sortItem && id && id !== touchCatDragId) {
+          touchCatDropTargetId = id
+          catDropTargetId.value = id
+        } else if (id && id !== touchCatDragId) {
+          // 清除其他项的高亮
+        }
+      })
+    }
+  }
+
+  // 边缘自动滚动
+  const container = categorySortListRef.value
+  if (container) {
+    const rect = container.getBoundingClientRect()
+    const y = touch.clientY - rect.top
+    const edgeSize = 60
+    const maxSpeed = 20
+    const minSpeed = 3
+    if (y < edgeSize) {
+      const ratio = 1 - Math.max(0, y) / edgeSize
+      container.scrollTop -= minSpeed + (maxSpeed - minSpeed) * ratio * ratio
+    } else if (y > rect.height - edgeSize) {
+      const ratio = 1 - Math.max(0, (rect.height - y)) / edgeSize
+      container.scrollTop += minSpeed + (maxSpeed - minSpeed) * ratio * ratio
+    }
+  }
+}
+
+function handleCatDocTouchEnd() {
+  if (!touchCatDragging) return
+  touchCatDragging = false
+
+  // 如果有拖放目标，执行排序
+  if (touchCatDragId && touchCatDropTargetId && touchCatDragId !== touchCatDropTargetId) {
+    const sorted = [...navStore.sortedCategories]
+    const ids = sorted.map(c => c.id)
+    const fromIdx = ids.indexOf(touchCatDragId)
+    const toIdx = ids.indexOf(touchCatDropTargetId)
+    if (fromIdx !== -1 && toIdx !== -1) {
+      ids.splice(fromIdx, 1)
+      ids.splice(toIdx, 0, touchCatDragId)
+      navStore.reorderCategories(ids)
+    }
+  }
+
+  // 清理
+  if (touchCatClone) {
+    touchCatClone.remove()
+    touchCatClone = null
+  }
+  touchCatItemRect = null
+  touchCatDragId = null
+  touchCatDropTargetId = null
+  catDropTargetId.value = null
+  draggingCatId.value = null
+
+  // 移除拖拽样式
+  document.querySelectorAll('.category-sort-item.cat-dragging').forEach(el => {
+    el.classList.remove('cat-dragging')
+  })
+
+  document.removeEventListener('touchmove', handleCatDocTouchMove)
+  document.removeEventListener('touchend', handleCatDocTouchEnd)
+  document.removeEventListener('touchcancel', handleCatDocTouchEnd)
+}
 
 function getEngineFaviconSrc(urlTemplate: string): string {
   return getEngineFaviconCandidates(urlTemplate)[0] || ''
@@ -76,7 +204,7 @@ const toolbarDropTarget = ref<ToolbarButtonId | null>(null)
 const toolbarLabelMap: Record<ToolbarButtonId, string> = {
   theme: '主题切换',
   network: '网络切换',
-  add: '添加按钮',
+  add: '添加链接/分类',
   expand: '展开/收起',
   filter: '筛选',
   backTop: '回到顶部',
@@ -124,10 +252,30 @@ onMounted(() => {
 onUnmounted(() => {
   document.body.style.overflow = ''
   document.documentElement.style.overflow = ''
+  // 清理触摸拖拽事件
+  document.removeEventListener('touchmove', handleCatDocTouchMove)
+  document.removeEventListener('touchend', handleCatDocTouchEnd)
+  document.removeEventListener('touchcancel', handleCatDocTouchEnd)
+  if (touchCatClone) {
+    touchCatClone.remove()
+    touchCatClone = null
+  }
 })
 
 function handleFileManagerSelect(dataUrl: string) {
   settingsStore.setBackgroundImage(dataUrl)
+}
+
+function handleFileManagerDelete(id: string) {
+  // 标记图片为已删除，避免 pull 时恢复
+  const deletedImages: string[] = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
+  if (!deletedImages.includes(id)) {
+    deletedImages.push(id)
+    localStorage.setItem('nav_deleted_bg_images', JSON.stringify(deletedImages))
+  }
+  if (id === 'bg_image') {
+    settingsStore.setBackgroundImage('')
+  }
 }
 
 const themeColors = [
@@ -350,10 +498,19 @@ function confirmBookmarkImport() {
     const exists = navStore.links.some(l => l.urls.extranet === item.url || l.urls.intranet === item.url)
     if (!exists) {
       const cat = navStore.categories.find(c => c.name === item.category)
+      let iconUrl = item.icon
+      
+      if (!iconUrl) {
+        const faviconFormats = getAllFaviconFormats(item.url)
+        if (faviconFormats.length > 0) {
+          iconUrl = faviconFormats[0]
+        }
+      }
+      
       navStore.addLink({
         title: item.title,
-        icon: 'link',
-        iconUrl: item.icon,
+        icon: '',
+        iconUrl: iconUrl || undefined,
         category: cat ? cat.id : 'tools',
         urls: { extranet: item.url },
         tags: [],
@@ -364,9 +521,6 @@ function confirmBookmarkImport() {
   }
   showBookmarkImport.value = false
   toast.success(`成功导入 ${imported} 个书签（跳过 ${items.length - imported} 个重复项）`)
-  if (imported > 0) {
-    navStore.batchFetchFavicons()
-  }
 }
 
 async function handleLocalImageUpload(event: Event) {
@@ -497,32 +651,13 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
       <div class="settings-content">
         <div v-show="activeTab === 'theme'" class="settings-section">
-          <h4>网站信息</h4>
-          <div class="form-group">
-            <label>网站标题</label>
-            <input
-              type="text"
-              :value="settingsStore.settings.siteTitle"
-              @input="settingsStore.setSiteTitle(($event.target as HTMLInputElement).value)"
-              placeholder="NavHub"
-            />
-          </div>
-          <div class="form-group">
-            <label>网站描述</label>
-            <input
-              type="text"
-              :value="settingsStore.settings.siteDescription"
-              @input="settingsStore.setSiteDescription(($event.target as HTMLInputElement).value)"
-              placeholder="个人导航中心"
-            />
-          </div>
 
-          <h4>外观风格</h4>
+          <h4>颜色与风格</h4>
           <div class="theme-modes">
             <button
               v-for="mode in ['light', 'dark', 'auto']"
               :key="mode"
-              :class="['mode-btn', { active: settingsStore.settings.theme.mode === mode }]"
+              :class="['mode-btn', { active: settingsStore.settings?.theme?.mode === mode }]"
               @click="settingsStore.setThemeMode(mode as any)"
             >
               {{ mode === 'light' ? '☀️' : mode === 'dark' ? '🌙' : '🔄' }}
@@ -575,8 +710,21 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
             />
             <span class="slider-val">{{ settingsStore.settings.theme.borderRadius }}px</span>
           </div>
+          <div class="setting-group">
+            <label class="group-label">卡片尺寸</label>
+            <div class="layout-modes">
+              <button
+                v-for="size in ['tiny', 'small', 'medium', 'large']"
+                :key="size"
+                :class="['mode-btn', { active: settingsStore.settings.layout.cardSize === size }]"
+                @click="settingsStore.setCardSize(size as any)"
+              >
+                {{ size === 'tiny' ? '极小' : size === 'small' ? '小' : size === 'medium' ? '中' : '大' }}
+              </button>
+            </div>
+          </div>
 
-          <h4>背景设置</h4>
+          <h4>背景</h4>
           <div class="setting-group">
             <label class="group-label">纯色背景</label>
             <div class="color-picker">
@@ -654,15 +802,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               />
               <span class="slider-val">{{ settingsStore.settings.theme.bgBlur ?? 0 }}px</span>
             </div>
-            <div class="toggle-row">
-              <span>毛玻璃效果</span>
-              <button
-                :class="['toggle', { active: settingsStore.settings.theme.glassEffect }]"
-                @click="settingsStore.toggleGlassEffect()"
-              >
-                {{ settingsStore.settings.theme.glassEffect ? '开' : '关' }}
-              </button>
-            </div>
             <div class="slider-row">
               <span>白膜透明度</span>
               <input
@@ -670,11 +809,11 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 min="0"
                 max="1"
                 step="0.01"
-                :value="settingsStore.settings.theme.bgOverlayOpacity ?? 0.12"
+                :value="settingsStore.settings.theme.bgOverlayOpacity ?? 1"
                 @input="settingsStore.setBgOverlayOpacity(Number(($event.target as HTMLInputElement).value))"
                 class="range-slider"
               />
-              <span class="slider-val">{{ Math.round((settingsStore.settings.theme.bgOverlayOpacity ?? 0.12) * 100) }}%</span>
+              <span class="slider-val">{{ Math.round((settingsStore.settings.theme.bgOverlayOpacity ?? 1) * 100) }}%</span>
             </div>
           </div>
 
@@ -825,37 +964,16 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
         </div>
 
         <div v-show="activeTab === 'layout'" class="settings-section">
-          <h4>卡片尺寸</h4>
-          <div class="layout-modes">
+          <h4>显示设置</h4>
+          <div class="toggle-row">
+            <span>分类白框</span>
             <button
-              v-for="size in ['small', 'medium', 'large']"
-              :key="size"
-              :class="['mode-btn', { active: settingsStore.settings.layout.cardSize === size }]"
-              @click="settingsStore.setCardSize(size as any)"
+              :class="['toggle', { active: settingsStore.settings.layout.showCategoryCard }]"
+              @click="settingsStore.toggleCategoryCard()"
             >
-              {{ size === 'small' ? '小' : size === 'medium' ? '中' : '大' }}
+              {{ settingsStore.settings.layout.showCategoryCard ? '开' : '关' }}
             </button>
           </div>
-
-          <h4>分类布局</h4>
-          <div class="layout-modes">
-            <button
-              :class="['mode-btn', { active: settingsStore.settings.layout.categoryLayout === 'single' }]"
-              @click="settingsStore.setCategoryLayout('single')"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="4" rx="1"/><rect x="4" y="10" width="16" height="4" rx="1"/><rect x="4" y="16" width="16" height="4" rx="1"/></svg>
-              单列
-            </button>
-            <button
-              :class="['mode-btn', { active: settingsStore.settings.layout.categoryLayout === 'double' }]"
-              @click="settingsStore.setCategoryLayout('double')"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="8" height="4" rx="1"/><rect x="13" y="4" width="8" height="4" rx="1"/><rect x="3" y="10" width="8" height="4" rx="1"/><rect x="13" y="10" width="8" height="4" rx="1"/><rect x="3" y="16" width="8" height="4" rx="1"/><rect x="13" y="16" width="8" height="4" rx="1"/></svg>
-              双列
-            </button>
-          </div>
-
-          <h4>其他设置</h4>
           <div class="toggle-row">
             <span>显示描述</span>
             <button
@@ -865,18 +983,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               {{ settingsStore.settings.layout.showDescription ? '开' : '关' }}
             </button>
           </div>
-          <div class="toggle-row">
-            <span>紧凑模式</span>
-            <button
-              :class="['toggle', { active: settingsStore.settings.layout.compactMode }]"
-              @click="settingsStore.toggleCompact()"
-            >
-              {{ settingsStore.settings.layout.compactMode ? '开' : '关' }}
-            </button>
-          </div>
 
-          <h4>工具栏按钮管理</h4>
-          <div class="toolbar-hint">拖拽调整按钮顺序，点击切换显示/隐藏。设置按钮始终显示。</div>
+          <h4>工具栏</h4>
+          <div class="toolbar-hint">拖拽调整顺序，点击切换显隐</div>
           <div class="toolbar-manage-list">
             <div
               v-for="btn in settingsStore.getToolbar()"
@@ -898,14 +1007,14 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               </span>
               <span class="toolbar-manage-name">{{ toolbarLabelMap[btn.id] }}</span>
               <button class="toolbar-toggle" @click="settingsStore.toggleToolbarButton(btn.id)">
-                {{ btn.visible ? '👁' : '🚫' }}
+                {{ btn.visible ? '✓' : '✕' }}
               </button>
             </div>
           </div>
 
-          <h4>分类排序</h4>
+          <h4>分类</h4>
           <button class="btn btn-secondary" @click="showCatSortModal = true">
-            🔄 调整分类顺序
+            调整分类顺序
           </button>
         </div>
 
@@ -1058,12 +1167,14 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                       'cat-dragging': draggingCatId === cat.id,
                       'cat-drop-target': catDropTargetId === cat.id
                     }"
+                    :data-cat-id="cat.id"
                     draggable="true"
                     @dragstart="handleCatDragStart($event, cat.id)"
                     @dragover="handleCatDragOver($event, cat.id)"
                     @dragleave="handleCatDragLeave(cat.id)"
                     @drop="handleCatDrop($event, cat.id)"
                     @dragend="handleCatDragEnd"
+                    @touchstart="handleCatTouchStart($event, cat.id)"
                   >
                     <span class="category-sort-handle">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
@@ -1118,6 +1229,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
         v-if="showFileManager"
         @close="showFileManager = false"
         @select-wallpaper="handleFileManagerSelect"
+        @delete-wallpaper="handleFileManagerDelete"
       />
 
       <Transition name="fade">
@@ -1421,12 +1533,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   padding-top: 4px;
 }
 
-.bg-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .bg-input-row {
   display: flex;
   gap: 8px;
@@ -1488,11 +1594,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   background: rgba(239, 68, 68, 0.08);
 }
 
-.bg-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 .slider-row {
   display: flex;
   align-items: center;
@@ -1538,32 +1639,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   text-align: right;
   font-size: 12px;
   color: var(--text-muted);
-}
-
-.search-engines {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.engine-btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  transition: all var(--transition);
-}
-
-.engine-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.engine-btn.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
 }
 
 .engine-list {
@@ -1850,159 +1925,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   color: var(--text-muted);
 }
 
-.sync-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.sync-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.auth-mode-tabs {
-  display: flex;
-  gap: 0;
-  background: var(--bg);
-  border-radius: 8px;
-  padding: 3px;
-  border: 1px solid var(--border);
-}
-
-.auth-mode-btn {
-  flex: 1;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 6px;
-  color: var(--text-secondary);
-  transition: all var(--transition);
-}
-
-.auth-mode-btn.active {
-  background: var(--primary);
-  color: #fff;
-}
-
-.auth-remember-row {
-  display: flex;
-  align-items: center;
-}
-
-.remember-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.remember-label input[type="checkbox"] {
-  accent-color: var(--primary);
-  width: 15px;
-  height: 15px;
-}
-
-.auth-message {
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  text-align: center;
-}
-
-.auth-message.loading {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-
-.auth-message.success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-}
-
-.auth-message.error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.auth-message.idle {
-  display: none;
-}
-
-.auth-logged-in {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.auth-user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--bg);
-  border-radius: 10px;
-  border: 1px solid var(--border);
-}
-
-.auth-label {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.auth-username {
-  flex: 1;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--primary);
-}
-
-.auth-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.auth-actions .btn {
-  flex: 1;
-  justify-content: center;
-}
-
 .btn-block {
   width: 100%;
   justify-content: center;
-}
-
-.copy-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-  transition: all var(--transition);
-}
-
-.copy-btn:hover {
-  background: var(--primary);
-  color: #fff;
-}
-
-.btn-danger-outline {
-  background: transparent;
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.btn-danger-outline:hover {
-  background: rgba(239, 68, 68, 0.1);
 }
 
 .account-info {

@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .wrangler
 wrangler.toml
+data
+.uploads
 
 # Editor directories and files
 .vscode/*

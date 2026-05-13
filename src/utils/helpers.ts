@@ -101,9 +101,49 @@ export function getEngineFaviconCandidates(urlTemplate: string): string[] {
 }
 
 /**
+ * 获取网站所有可能的 favicon 格式
+ * 尝试获取 ico、png、svg 等多种格式
+ */
+export function getAllFaviconFormats(url: string): string[] {
+  try {
+    const { protocol, hostname } = new URL(url)
+    if (!hostname) return []
+    
+    if (isPrivateHostname(hostname)) {
+      const ddgFavicon = `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+      return [ddgFavicon]
+    }
+    
+    return [
+      `${protocol}//${hostname}/favicon.ico`,
+      `${protocol}//${hostname}/favicon.png`,
+      `${protocol}//${hostname}/favicon.svg`,
+      `${protocol}//${hostname}/apple-touch-icon.png`,
+      `https://icons.duckduckgo.com/ip3/${hostname}.ico`,
+    ]
+  } catch {
+    return []
+  }
+}
+
+/**
  * 获取搜索引擎第一个可用的 favicon URL（兼容旧调用）
  */
 export function getEngineFavicon(urlTemplate: string): string {
   const candidates = getEngineFaviconCandidates(urlTemplate)
   return candidates[0] || ''
+}
+
+/**
+ * 高亮搜索匹配文字
+ * 将 text 中匹配 query 的部分用 <mark> 标签包裹（大小写不敏感）
+ * @param text - 原始文本
+ * @param query - 搜索关键词
+ * @returns 包含 <mark> 标签的 HTML 字符串
+ */
+export function highlightMatch(text: string, query: string): string {
+  if (!query.trim()) return text
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx === -1) return text
+  return text.slice(0, idx) + '<mark>' + text.slice(idx, idx + query.length) + '</mark>' + text.slice(idx + query.length)
 }
