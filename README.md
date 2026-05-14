@@ -63,8 +63,6 @@ npm run server   # 启动后端 http://localhost:8888
 npm run dev      # 启动前端 http://localhost:5173
 ```
 
-第一个注册的用户自动成为管理员。
-
 ## 部署
 
 ### Docker（推荐）
@@ -73,7 +71,7 @@ npm run dev      # 启动前端 http://localhost:5173
 docker compose up -d
 ```
 
-访问 `http://localhost:8888`
+访问 `http://localhost:8888`，**第一个注册的用户自动成为管理员**。
 
 数据持久化在 `./data` 目录。
 
@@ -85,7 +83,7 @@ npm run build
 PORT=8888 node server.mjs
 ```
 
-访问 `http://localhost:8888`，服务器同时提供前端页面和 API。
+访问 `http://localhost:8888`，**第一个注册的用户自动成为管理员**。
 
 ### Nginx 反向代理
 
