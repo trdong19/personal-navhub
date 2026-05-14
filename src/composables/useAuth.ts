@@ -515,6 +515,9 @@ export function useAuth() {
   function debouncePush() {
     if (!token.value) return
     hasLocalChanges = true
+    // 本地修改时递增版本号，确保 push 时发送的版本不低于服务器
+    const v = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
+    localStorage.setItem(CACHED_VERSION_KEY, String(v + 1))
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => { push() }, 2000)
   }
