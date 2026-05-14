@@ -263,13 +263,15 @@ onMounted(async () => {
   navStore.batchFetchFavicons()
 })
 
-/** 后台同步：验证登录 + 检查版本 + 拉取更新 */
+/** 后台同步：验证登录 + 先推送本地修改 + 拉取服务端更新 */
 async function syncInBackground() {
   const valid = await auth.checkSession()
   if (!valid) {
     auth.logout()
     return
   }
+  // 先推送本地修改，防止 pull 覆盖用户刚改的数据
+  await auth.flushPush()
   const serverVersion = await auth.checkServerVersion()
   const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
   if (serverVersion !== null && serverVersion > cachedVersion) {

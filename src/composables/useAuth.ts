@@ -64,6 +64,8 @@ const isLoggedIn = ref(!!token.value)
 const authReady = ref(false)
 /** 自动同步的防抖定时器 */
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+/** 是否有本地修改未同步到服务器 */
+let hasLocalChanges = false
 /** 上次成功推送的数据哈希，用于前端去重 */
 let lastPushHash = ''
 /** 本地缓存的服务端版本号，用于 push 时携带版本做冲突检测 */
@@ -512,6 +514,7 @@ export function useAuth() {
    */
   function debouncePush() {
     if (!token.value) return
+    hasLocalChanges = true
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => { push() }, 2000)
   }
@@ -526,8 +529,9 @@ export function useAuth() {
       debounceTimer = null
     }
     if (token.value) {
-      push()
+      return push()
     }
+    return Promise.resolve(false)
   }
 
   /**
