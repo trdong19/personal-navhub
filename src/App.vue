@@ -311,18 +311,20 @@ function handleVisibilityChange() {
     auth.flushPush()
     auth.beaconPush()
   } else if (document.visibilityState === 'visible' && auth.token.value) {
-    // 页面重新可见时：检查服务器是否有更新，有则拉取（轻量级，只比对版本号）
-    auth.checkServerVersion().then(serverVersion => {
-      if (serverVersion === null) return
-      const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
-      if (serverVersion > cachedVersion) {
-        auth.pull().then(ok => {
-          if (ok) {
-            settingsStore.reloadFromStorage()
-            navStore.reloadFromStorage()
-          }
-        })
-      }
+    // 页面重新可见时：先推送本地修改（flush 防抖定时器），再检查服务器更新
+    auth.flushPush().then(() => {
+      auth.checkServerVersion().then(serverVersion => {
+        if (serverVersion === null) return
+        const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+        if (serverVersion > cachedVersion) {
+          auth.pull().then(ok => {
+            if (ok) {
+              settingsStore.reloadFromStorage()
+              navStore.reloadFromStorage()
+            }
+          })
+        }
+      })
     })
   }
 }
@@ -459,6 +461,8 @@ function toggleTools() {
     </Transition>
 
     <div v-if="auth.isLoggedIn.value" class="floating-controls">
+      <NetworkSwitcher />
+
       <Transition name="tool-expand">
         <div v-if="toolsExpanded" class="tools-panel">
           <template v-for="item in visibleToolbarItems" :key="item.id">
@@ -468,8 +472,6 @@ function toggleTools() {
               <svg v-else-if="settingsStore.settings?.theme?.mode === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
               <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="m4.93 4.93 2.12 2.12"/><path d="m16.95 16.95 2.12 2.12"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.93 19.07 2.12-2.12"/><path d="m16.95 7.05 2.12-2.12"/></svg>
             </button>
-
-            <NetworkSwitcher v-else-if="item.id === 'network'" />
 
             <div v-else-if="item.id === 'add'" class="fab-container" :class="{ 'fab-open': fabOpen }">
               <TransitionGroup name="fab-item">
