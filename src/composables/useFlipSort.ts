@@ -70,9 +70,9 @@ export function useFlipSort(
         existingAnimations.forEach(anim => {
           // 取消所有 transform 动画
           const effect = anim.effect
-          if (effect && effect.getKeyframes) {
-            const keyframes = effect.getKeyframes()
-            if (keyframes && keyframes.some(kf => kf.transform && kf.transform.includes('translate'))) {
+          if (effect && 'getKeyframes' in effect) {
+            const keyframes = (effect as any).getKeyframes()
+            if (keyframes && keyframes.some((kf: any) => kf.transform && kf.transform.includes('translate'))) {
               anim.cancel()
             }
           }

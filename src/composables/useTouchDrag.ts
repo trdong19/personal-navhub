@@ -127,7 +127,7 @@ export function useTouchDrag(options: UseTouchDragOptions) {
     cardRect = null
     cardRef.value?.classList.remove('card-dragging')
 
-    onDragEnd(lastOverCategoryId)
+    onDragEnd(lastOverCategoryId ?? undefined)
     lastOverCategoryId = null
   }
 

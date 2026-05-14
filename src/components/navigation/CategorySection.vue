@@ -441,7 +441,7 @@ function clearAllExpandTimers() {
     if (!droppedCategories.has(id)) {
       const category = navStore.categories.find(c => c.id === id)
       if (category && !category.collapsed) {
-        navStore.navStore.toggleCategory(id)
+        navStore.toggleCategory(id)
       }
     }
   })
@@ -482,7 +482,7 @@ function handleTouchDragOverCategory(categoryId: string) {
     if (!currentAndParentIds.includes(id) && !droppedCategories.has(id)) {
       const category = navStore.categories.find(c => c.id === id)
       if (category && !category.collapsed) {
-        navStore.navStore.toggleCategory(id)
+        navStore.toggleCategory(id)
       }
       const timer = autoExpandTimers.get(id)
       if (timer) {
@@ -497,7 +497,7 @@ function handleTouchDragOverCategory(categoryId: string) {
   if (category && category.collapsed) {
     if (!autoExpandTimers.has(categoryId)) {
       const timer = window.setTimeout(() => {
-        navStore.navStore.toggleCategory(categoryId)
+        navStore.toggleCategory(categoryId)
         autoExpandedCategories.add(categoryId)
         autoExpandTimers.delete(categoryId)
       }, 500)
@@ -589,7 +589,7 @@ function handleCategoryTouchMove(e: TouchEvent) {
           if (!currentAndParentIds.includes(id) && !droppedCategories.has(id)) {
             const category = navStore.categories.find(c => c.id === id)
             if (category && !category.collapsed) {
-              navStore.navStore.toggleCategory(id)
+              navStore.toggleCategory(id)
             }
             const timer = autoExpandTimers.get(id)
             if (timer) {
@@ -604,7 +604,7 @@ function handleCategoryTouchMove(e: TouchEvent) {
         if (category && category.collapsed) {
           if (!autoExpandTimers.has(targetId)) {
             const timer = window.setTimeout(() => {
-              navStore.navStore.toggleCategory(targetId)
+              navStore.toggleCategory(targetId)
               autoExpandedCategories.add(targetId)
               autoExpandTimers.delete(targetId)
             }, 500)
@@ -690,7 +690,7 @@ function handleCategoryDragOver(e: DragEvent, categoryId: string) {
     if (!currentAndParentIds.includes(id) && !droppedCategories.has(id)) {
       const category = navStore.categories.find(c => c.id === id)
       if (category && !category.collapsed) {
-        navStore.navStore.toggleCategory(id)
+        navStore.toggleCategory(id)
       }
       const timer = autoExpandTimers.get(id)
       if (timer) {
@@ -705,7 +705,7 @@ function handleCategoryDragOver(e: DragEvent, categoryId: string) {
   if (category && category.collapsed) {
     if (!autoExpandTimers.has(categoryId)) {
       const timer = window.setTimeout(() => {
-        navStore.navStore.toggleCategory(categoryId)
+        navStore.toggleCategory(categoryId)
         autoExpandedCategories.add(categoryId)
         autoExpandTimers.delete(categoryId)
       }, 500)
@@ -810,7 +810,7 @@ function closeCtxMenu() {
   autoExpandedCategories.forEach(id => {
     const category = navStore.categories.find(c => c.id === id)
     if (category && !category.collapsed) {
-      navStore.navStore.toggleCategory(id)
+      navStore.toggleCategory(id)
     }
   })
   autoExpandedCategories.clear()
@@ -931,7 +931,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
         if (categoryDropTarget === category.id) { categoryDropTarget = null; }
         // 清除该分类的自动展开定时器（不收缩，因为可能只是鼠标经过子元素）
         const timer = autoExpandTimers.get(category.id);
-        if (timer) { clearTimeout(timer); autoExpandTimers.delete(category.id); }
+        if (timer) { window.clearTimeout(timer); autoExpandTimers.delete(category.id); }
       "
     >
       <div class="category-header">
@@ -998,7 +998,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
                 if (categoryDropTarget === child.id) { categoryDropTarget = null; }
                 // 清除该分类的自动展开定时器（不收缩，因为可能只是鼠标经过子元素）
                 const timer = autoExpandTimers.get(child.id);
-                if (timer) { clearTimeout(timer); autoExpandTimers.delete(child.id); }
+                if (timer) { window.clearTimeout(timer); autoExpandTimers.delete(child.id); }
               "
               :class="{ 'drop-target': dropTargetCategory === child.id, 'cat-drop-target': categoryDropTarget === child.id, 'no-card': !settingsStore.settings.layout.showCategoryCard }"
             >
@@ -1055,7 +1055,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
                         if (categoryDropTarget === grandchild.id) { categoryDropTarget = null; }
                         // 清除该分类的自动展开定时器（不收缩，因为可能只是鼠标经过子元素）
                         const timer = autoExpandTimers.get(grandchild.id);
-                        if (timer) { clearTimeout(timer); autoExpandTimers.delete(grandchild.id); }
+                        if (timer) { window.clearTimeout(timer); autoExpandTimers.delete(grandchild.id); }
                       "
                       :class="{ 'drop-target': dropTargetCategory === grandchild.id, 'cat-drop-target': categoryDropTarget === grandchild.id, 'no-card': !settingsStore.settings.layout.showCategoryCard }"
                     >
