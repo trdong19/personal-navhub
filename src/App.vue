@@ -241,25 +241,13 @@ function openAdminPanel() {
 onMounted(async () => {
   settingsStore.init()
 
-  if (auth.token.value) {
-    const valid = await auth.checkSession()
-    if (valid) {
-      // 检查服务器版本，只有服务器有更新时才拉取（避免覆盖本地新数据）
-      const serverVersion = await auth.checkServerVersion()
-      const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
-      if (serverVersion !== null && serverVersion > cachedVersion) {
-        const ok = await auth.pull()
-        if (ok) {
-          settingsStore.reloadFromStorage()
-          navStore.reloadFromStorage()
-        }
-      }
-    } else {
-      // checkSession 失败（token可能过期），清除认证状态让用户重新登录
-      auth.logout()
-    }
-  }
+  // 立即显示页面（从 localStorage 加载本地数据），不阻塞渲染
   auth.authReady.value = true
+
+  // 后台同步：验证登录状态 + 拉取服务器数据
+  if (auth.token.value) {
+    syncInBackground()
+  }
 
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('scroll', handleScroll, { passive: true })
@@ -274,6 +262,24 @@ onMounted(async () => {
 
   navStore.batchFetchFavicons()
 })
+
+/** 后台同步：验证登录 + 检查版本 + 拉取更新 */
+async function syncInBackground() {
+  const valid = await auth.checkSession()
+  if (!valid) {
+    auth.logout()
+    return
+  }
+  const serverVersion = await auth.checkServerVersion()
+  const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+  if (serverVersion !== null && serverVersion > cachedVersion) {
+    const ok = await auth.pull()
+    if (ok) {
+      settingsStore.reloadFromStorage()
+      navStore.reloadFromStorage()
+    }
+  }
+}
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
