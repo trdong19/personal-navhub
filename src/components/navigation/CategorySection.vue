@@ -37,6 +37,8 @@ const categoryDropTarget = ref<string | null>(null)
 const isBatchDragging = ref(false)
 // dropTargetLinkId 现在使用 navStore.dropTargetLinkId
 
+function clearTimer(timer: number) { clearTimeout(timer) }
+
 function handleKeyDown(e: KeyboardEvent) {
   if (e.key === 'Escape' && navStore.selectionMode) {
     navStore.exitSelectionMode()
@@ -216,7 +218,7 @@ function handleTouchDrop(categoryId: string) {
   const isBatchMode = isBatchDragging.value && navStore.selectedLinkIds.size > 0
   if (isBatchMode) {
     const targetLinkId = navStore.dropTargetLinkId
-    const count = navStore.batchMoveLinks(categoryId, targetLinkId)
+    const count = navStore.batchMoveLinks(categoryId, targetLinkId ?? undefined)
     if (count > 0) {
       toast.success(`已将 ${count} 个链接移动到分类`)
     }
@@ -403,7 +405,7 @@ function handleCategoryDrop(e: DragEvent, categoryId: string) {
   const hasMoved = isBatchMode ? navStore.selectedLinkIds.size > 0 : !!draggingId.value
   if (isBatchMode) {
     const targetLinkId = navStore.dropTargetLinkId
-    const count = navStore.batchMoveLinks(categoryId, targetLinkId)
+    const count = navStore.batchMoveLinks(categoryId, targetLinkId ?? undefined)
     if (count > 0) {
       toast.success(`已将 ${count} 个链接移动到分类`)
     }
@@ -657,7 +659,7 @@ function getAllParentCategoryIds(categoryId: string): string[] {
   let category = navStore.categories.find(c => c.id === categoryId)
   while (category && category.parentId) {
     ids.push(category.parentId)
-    category = navStore.categories.find(c => c.id === category.parentId)
+    category = navStore.categories.find(c => c.id === category!.parentId)
   }
   return ids
 }
@@ -931,7 +933,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
         if (categoryDropTarget === category.id) { categoryDropTarget = null; }
         // 清除该分类的自动展开定时器（不收缩，因为可能只是鼠标经过子元素）
         const timer = autoExpandTimers.get(category.id);
-        if (timer) { window.clearTimeout(timer); autoExpandTimers.delete(category.id); }
+        if (timer) { clearTimer(timer); autoExpandTimers.delete(category.id); }
       "
     >
       <div class="category-header">
@@ -998,7 +1000,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
                 if (categoryDropTarget === child.id) { categoryDropTarget = null; }
                 // 清除该分类的自动展开定时器（不收缩，因为可能只是鼠标经过子元素）
                 const timer = autoExpandTimers.get(child.id);
-                if (timer) { window.clearTimeout(timer); autoExpandTimers.delete(child.id); }
+                if (timer) { clearTimer(timer); autoExpandTimers.delete(child.id); }
               "
               :class="{ 'drop-target': dropTargetCategory === child.id, 'cat-drop-target': categoryDropTarget === child.id, 'no-card': !settingsStore.settings.layout.showCategoryCard }"
             >
@@ -1055,7 +1057,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
                         if (categoryDropTarget === grandchild.id) { categoryDropTarget = null; }
                         // 清除该分类的自动展开定时器（不收缩，因为可能只是鼠标经过子元素）
                         const timer = autoExpandTimers.get(grandchild.id);
-                        if (timer) { window.clearTimeout(timer); autoExpandTimers.delete(grandchild.id); }
+                        if (timer) { clearTimer(timer); autoExpandTimers.delete(grandchild.id); }
                       "
                       :class="{ 'drop-target': dropTargetCategory === grandchild.id, 'cat-drop-target': categoryDropTarget === grandchild.id, 'no-card': !settingsStore.settings.layout.showCategoryCard }"
                     >
