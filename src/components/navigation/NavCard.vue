@@ -6,6 +6,7 @@ import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
 import { getFaviconCandidates } from '@/utils/helpers'
 import { useTouchDrag } from '@/composables/useTouchDrag'
+import { useToast } from '@/composables/useToast'
 
 const cardRef = ref<HTMLElement | null>(null)
 const handleRef = ref<HTMLElement | null>(null)
@@ -47,6 +48,7 @@ const emit = defineEmits<{
 const networkStore = useNetworkStore()
 const navStore = useNavStore()
 const settingsStore = useSettingsStore()
+const toast = useToast()
 
 const currentUrl = computed(() => {
   const { urls } = props.link
@@ -57,6 +59,13 @@ const currentUrl = computed(() => {
     return urls.tunnel || urls.extranet || urls.intranet || '#'
   }
   return urls.extranet || urls.intranet || urls.tunnel || '#'
+})
+
+const hasCurrentNetworkUrl = computed(() => {
+  const { urls } = props.link
+  if (networkStore.currentType === 'intranet') return !!urls.intranet
+  if (networkStore.currentType === 'tunnel') return !!urls.tunnel
+  return !!urls.extranet
 })
 
 const faviconCandidates = computed(() => {
@@ -152,7 +161,7 @@ const cardClass = computed(() => [
   'nav-card',
   `size-${settingsStore.settings.layout.cardSize}`,
   {
-    'no-url': currentUrl.value === '#',
+    'no-url': !hasCurrentNetworkUrl.value,
     'has-custom-color': !!props.link.color,
     'card-dragging': isDragging.value,
     'card-drag-over': isDragOver.value || navStore.dropTargetLinkId === props.link.id,
@@ -180,6 +189,11 @@ function handleClick(e?: MouseEvent) {
     return
   }
   if (currentUrl.value === '#') return
+  if (!hasCurrentNetworkUrl.value) {
+    const label = networkStore.currentType === 'intranet' ? '内网' : networkStore.currentType === 'tunnel' ? '隧道' : '外网'
+    toast.warning(`该链接未添加${label}地址`)
+    return
+  }
   navStore.recordAccess(props.link.id, networkStore.currentType)
   window.open(currentUrl.value, '_blank')
 }
