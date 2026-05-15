@@ -9,16 +9,30 @@ export function useCardEntrance(containerRef: Ref<HTMLElement | null>, selector 
     if (paused) return
     const el = containerRef.value
     if (!el || !(el instanceof HTMLElement)) return
-    const cards = el.querySelectorAll(selector)
-    if (!cards.length) return
+    const allCards = el.querySelectorAll(selector)
+    if (!allCards.length) return
 
-    waapi.animate(cards, {
-      opacity: [0, 1],
-      translateY: [16, 0],
-      duration: 350,
-      delay: stagger(40),
-      ease: 'outQuad',
-    })
+    const cards = Array.from(allCards).filter(c => !(c as HTMLElement).classList.contains('no-url'))
+    const noUrlCards = Array.from(allCards).filter(c => (c as HTMLElement).classList.contains('no-url'))
+
+    if (cards.length) {
+      waapi.animate(cards, {
+        opacity: [0, 1],
+        translateY: [16, 0],
+        duration: 350,
+        delay: stagger(40),
+        ease: 'outQuad',
+      })
+    }
+
+    if (noUrlCards.length) {
+      waapi.animate(noUrlCards, {
+        translateY: [16, 0],
+        duration: 350,
+        delay: stagger(40),
+        ease: 'outQuad',
+      })
+    }
   }
 
   function setupObserver() {

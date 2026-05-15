@@ -378,7 +378,7 @@ defineExpose({ openAdminPanel })
   z-index: 100;
   background: var(--bg-card);
   border-bottom: none;
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: none;
 }
 
 .header-inner {
