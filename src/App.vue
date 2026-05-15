@@ -46,18 +46,16 @@ const toolsExpanded = ref(false)
 const isMouseInBottomCorner = ref(false)
 let hideToolsTimeout: number | null = null
 
-const BOTTOM_CORNER_SIZE = 100
-
 function handleMouseMove(e: MouseEvent) {
   // 触屏设备不走鼠标悬停逻辑，避免合成的 mouse 事件干扰点击
   if (!window.matchMedia('(hover: hover)').matches) return
 
-  const inBottomCorner = e.clientX >= window.innerWidth - BOTTOM_CORNER_SIZE && e.clientY >= window.innerHeight - BOTTOM_CORNER_SIZE
-  const toolsPanel = document.querySelector('.floating-controls')
-  const onToolsPanel = toolsPanel && (toolsPanel.contains(e.target as Node))
+  const toolsPanelEl = document.querySelector('.tools-panel')
+  const toolsToggleEl = document.querySelector('.tools-toggle-btn')
+  const onToolsPanel = (toolsPanelEl && toolsPanelEl.contains(e.target as Node)) || (toolsToggleEl && toolsToggleEl.contains(e.target as Node))
   const hasSubmenuOpen = fabOpen.value || showUserMenu.value || filterPanelOpen.value
 
-  if (inBottomCorner || onToolsPanel || hasSubmenuOpen) {
+  if (onToolsPanel || hasSubmenuOpen) {
     isMouseInBottomCorner.value = true
     toolsExpanded.value = true
     if (hideToolsTimeout) {
