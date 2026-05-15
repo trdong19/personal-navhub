@@ -94,6 +94,7 @@ function toggleTheme() {
   const idx = modes.indexOf(current)
   const next = modes[(idx + 1) % modes.length]
   settingsStore.setThemeMode(next)
+  settingsStore.save()
 }
 
 function handleKeydown(e: KeyboardEvent) {

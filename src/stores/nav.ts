@@ -57,7 +57,7 @@ export const useNavStore = defineStore('nav', () => {
   const tagFilter = ref<string[]>([])
 
   /** 获取防抖同步推送函数 */
-  const { debouncePush } = useAuth()
+  const { flushPush } = useAuth()
 
   const allTags = computed(() => {
     const tagSet = new Set<string>()
@@ -370,13 +370,13 @@ export const useNavStore = defineStore('nav', () => {
   /** 保存书签到 localStorage 并触发同步 */
   function saveLinks() {
     storageSet('navLinks', links.value)
-    debouncePush()
+    flushPush()
   }
 
   /** 保存分类到 localStorage 并触发同步 */
   function saveCategories() {
     storageSet('navCategories', categories.value)
-    debouncePush()
+    flushPush()
   }
 
   // ==================== 书签操作 ====================
@@ -470,7 +470,6 @@ export const useNavStore = defineStore('nav', () => {
       accessRecords.value = accessRecords.value.slice(-500)
     }
     storageSet('accessRecords', accessRecords.value)
-    debouncePush()
   }
 
   /**

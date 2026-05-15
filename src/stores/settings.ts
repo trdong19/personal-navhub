@@ -100,7 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const isDark = ref(false)
 
   /** 获取防抖同步推送函数 */
-  const { debouncePush } = useAuth()
+  const { debouncePush, push } = useAuth()
 
   /**
    * 释放旧的 blob: URL（避免内存泄漏）
@@ -113,13 +113,47 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * 保存设置到 localStorage 并触发自动同步
+   * 保存设置到 localStorage（不推送服务器）
    */
-  async function save() {
+  function save() {
     const copy = { ...settings.value }
     storageSet('userSettings', copy)
     try { localStorage.setItem('nav_local_bg_image', localBgImage.value || '') } catch {}
-    debouncePush()
+  }
+
+  /**
+   * 保存到 localStorage 并同步到服务器
+   */
+  function saveAndSync() {
+    save()
+    push()
+  }
+
+  // ==================== 快照机制（设置面板用） ====================
+
+  let snapshot: any = null
+  let snapshotLocalBgImage = ''
+
+  /** 保存当前设置快照 */
+  function takeSnapshot() {
+    snapshot = JSON.parse(JSON.stringify(settings.value))
+    snapshotLocalBgImage = localBgImage.value
+  }
+
+  /** 恢复到快照状态 */
+  function revertSettings() {
+    if (!snapshot) return
+    revokeBgUrl()
+    settings.value = JSON.parse(JSON.stringify(snapshot))
+    localBgImage.value = snapshotLocalBgImage
+    try { localStorage.setItem('nav_local_bg_image', snapshotLocalBgImage || '') } catch {}
+    applyTheme()
+  }
+
+  /** 是否有未保存的改动 */
+  function hasChanges(): boolean {
+    if (!snapshot) return false
+    return JSON.stringify(settings.value) !== JSON.stringify(snapshot)
   }
 
   /**
@@ -284,34 +318,29 @@ export const useSettingsStore = defineStore('settings', () => {
   /** 设置站点标题 */
   function setSiteTitle(title: string) {
     settings.value.siteTitle = title
-    save()
     applyTheme()
   }
 
   /** 设置站点描述 */
   function setSiteDescription(desc: string) {
     settings.value.siteDescription = desc
-    save()
   }
 
   /** 设置主题模式（light / dark / auto） */
   function setThemeMode(mode: ThemeMode) {
     settings.value.theme.mode = mode
-    save()
     applyTheme()
   }
 
   /** 设置主题主色 */
   function setPrimaryColor(color: string) {
     settings.value.theme.primaryColor = color
-    save()
     applyTheme()
   }
 
   /** 设置圆角大小 */
   function setBorderRadius(radius: number) {
     settings.value.theme.borderRadius = radius
-    save()
     applyTheme()
   }
 
@@ -353,84 +382,72 @@ export const useSettingsStore = defineStore('settings', () => {
       settings.value.theme.backgroundImage = url
       try { await deleteBgImage() } catch {}
     }
-    save()
     applyTheme()
   }
 
   /** 设置背景色 */
   function setBackgroundColor(color: string) {
     settings.value.theme.backgroundColor = color
-    save()
     applyTheme()
   }
 
   /** 切换毛玻璃效果 */
   function toggleGlassEffect() {
     settings.value.theme.glassEffect = !settings.value.theme.glassEffect
-    save()
     applyTheme()
   }
 
   /** 切换背景遮罩开关 */
   function toggleBgOverlay() {
     settings.value.theme.bgOverlay = settings.value.theme.bgOverlay === false ? true : false
-    save()
     applyTheme()
   }
 
   /** 设置背景遮罩透明度 */
   function setBgOverlayOpacity(value: number) {
     settings.value.theme.bgOverlayOpacity = value
-    save()
     applyTheme()
   }
 
   /** 设置背景模糊强度 */
   function setBgBlur(value: number) {
     settings.value.theme.bgBlur = value
-    save()
     applyTheme()
   }
 
   /** 设置搜索框自定义颜色 */
   function setSearchColor(color: string) {
     settings.value.theme.searchColor = color
-    save()
     applyTheme()
   }
 
   /** 设置搜索框透明度 */
   function setSearchOpacity(value: number) {
     settings.value.theme.searchOpacity = value
-    save()
     applyTheme()
   }
 
   /** 设置书签卡片自定义颜色 */
   function setCardColor(color: string) {
     settings.value.theme.cardColor = color
-    save()
     applyTheme()
   }
 
   /** 设置书签卡片透明度 */
   function setCardOpacity(value: number) {
     settings.value.theme.cardOpacity = value
-    save()
     applyTheme()
   }
 
   /** 设置字体颜色（应用到所有文字元素） */
   function setTextColor(color: string) {
     settings.value.theme.textColor = color
-    save()
     applyTheme()
   }
 
   /** 设置字体颜色透明度 */
   function setTextOpacity(value: number) {
     settings.value.theme.textOpacity = value
-    save()
     applyTheme()
   }
 
@@ -473,44 +490,37 @@ export const useSettingsStore = defineStore('settings', () => {
       }
     }
     settings.value.layout.toolbar = reordered
-    save()
   }
 
   /** 设置卡片尺寸（small / medium / large） */
   function setCardSize(size: UserSettings['layout']['cardSize']) {
     settings.value.layout.cardSize = size
-    save()
   }
 
   /** 设置列数（数字或 'auto' 自适应） */
   function setColumns(columns: number | 'auto') {
     settings.value.layout.columns = columns
-    save()
   }
 
   /** 切换是否显示书签描述 */
   function toggleDescription() {
     settings.value.layout.showDescription = !settings.value.layout.showDescription
-    save()
   }
 
   /** 切换是否显示分类白框 */
   function toggleCategoryCard() {
     settings.value.layout.showCategoryCard = !settings.value.layout.showCategoryCard
-    save()
   }
 
   /** 设置默认搜索引擎 */
   function setDefaultEngine(id: string) {
     settings.value.search.defaultEngine = id
-    save()
   }
 
   /** 添加自定义搜索引擎 */
   function addEngine(engine: Omit<SearchEngine, 'id'>) {
     const id = 'engine_' + Date.now()
     settings.value.search.engines.push({ ...engine, id })
-    save()
   }
 
   /**
@@ -526,7 +536,6 @@ export const useSettingsStore = defineStore('settings', () => {
     if (settings.value.search.defaultEngine === id) {
       settings.value.search.defaultEngine = engines[0].id
     }
-    save()
   }
 
   /** 更新搜索引擎信息 */
@@ -534,7 +543,6 @@ export const useSettingsStore = defineStore('settings', () => {
     const engine = settings.value.search.engines.find(e => e.id === id)
     if (!engine) return
     Object.assign(engine, data)
-    save()
   }
 
   /** 基础设置重置：仅重置设置配置，保留书签数据和背景图 */
@@ -544,7 +552,7 @@ export const useSettingsStore = defineStore('settings', () => {
     localBgImage.value = ''
     localStorage.removeItem('nav_local_bg_image')
     try { deleteBgImage() } catch {}
-    save()
+    saveAndSync()
     applyTheme()
   }
 
@@ -558,7 +566,7 @@ export const useSettingsStore = defineStore('settings', () => {
     storageRemove('navCategories')
     storageRemove('accessRecords')
     try { deleteBgImage() } catch {}
-    save()
+    saveAndSync()
     applyTheme()
   }
 
@@ -626,6 +634,11 @@ export const useSettingsStore = defineStore('settings', () => {
     init,
     applyTheme,
     reloadFromStorage,
+    save,
+    saveAndSync,
+    takeSnapshot,
+    revertSettings,
+    hasChanges,
     setThemeMode,
     setPrimaryColor,
     setBorderRadius,

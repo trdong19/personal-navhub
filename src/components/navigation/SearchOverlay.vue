@@ -42,8 +42,8 @@ const commands = computed(() => {
     { id: 'settings', name: '打开设置', icon: '⚙️', action: () => { emit('close'); emit('open-settings') } },
     { id: 'export', name: '导出数据', icon: '�', action: () => { handleExport() } },
     { id: 'stats', name: '查看统计', icon: '�', action: () => { emit('close'); emit('open-stats') } },
-    { id: 'theme-dark', name: '切换暗色主题', icon: '🌙', action: () => { settingsStore.setThemeMode('dark'); emit('close') } },
-    { id: 'theme-light', name: '切换亮色主题', icon: '☀️', action: () => { settingsStore.setThemeMode('light'); emit('close') } },
+    { id: 'theme-dark', name: '切换暗色主题', icon: '🌙', action: () => { settingsStore.setThemeMode('dark'); settingsStore.save(); emit('close') } },
+    { id: 'theme-light', name: '切换亮色主题', icon: '☀️', action: () => { settingsStore.setThemeMode('light'); settingsStore.save(); emit('close') } },
   ]
 
   if (!cmd) return allCommands

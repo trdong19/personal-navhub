@@ -68,6 +68,9 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let hasLocalChanges = false
 /** 上次成功推送的数据哈希，用于前端去重 */
 let lastPushHash = ''
+/** 推送队列：防止并发 push，保证串行执行 */
+let isPushing = false
+let pendingPush = false
 /** 本地缓存的服务端版本号，用于 push 时携带版本做冲突检测 */
 const CACHED_VERSION_KEY = 'nav_cached_server_version'
 
@@ -244,6 +247,28 @@ export function useAuth() {
    */
   async function push(): Promise<boolean> {
     if (!token.value) return false
+    // 防止并发 push：如果正在推送，标记待推送，等当前完成后自动重推
+    if (isPushing) {
+      pendingPush = true
+      return false
+    }
+    isPushing = true
+    pendingPush = false
+    try {
+      const result = await doPush()
+      // 如果推送期间有新的修改，再推一次
+      if (pendingPush) {
+        pendingPush = false
+        await doPush()
+      }
+      return result
+    } finally {
+      isPushing = false
+    }
+  }
+
+  async function doPush(): Promise<boolean> {
+    if (!token.value) return false
     try {
       const settingsData = localStorage.getItem('nav_userSettings')
       const linksData = localStorage.getItem('nav_navLinks')
@@ -325,10 +350,11 @@ export function useAuth() {
         clearAuth()
         return false
       }
-      // 版本冲突：其他设备已更新，先拉取再重推
+      // 版本冲突：递增版本号，用本地最新数据覆盖服务器
       if (res.status === 409) {
-        await pull()
-        data.version = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
+        const newVersion = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0') + 1
+        safeSetItem(CACHED_VERSION_KEY, String(newVersion))
+        data.version = newVersion
         const retryRes = await fetch(`${getApiBase()}/sync`, {
           method: 'POST',
           headers: headers(),
@@ -338,7 +364,6 @@ export function useAuth() {
           const retryResult = await safeJson(retryRes)
           safeSetItem(CACHED_VERSION_KEY, String(retryResult.version))
           lastPushHash = coreHash
-          window.dispatchEvent(new CustomEvent('nav-remote-update'))
         }
         return retryRes.ok
       }

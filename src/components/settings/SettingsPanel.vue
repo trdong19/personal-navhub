@@ -245,6 +245,7 @@ function handleToolbarDragEnd() {
 }
 
 onMounted(() => {
+  settingsStore.takeSnapshot()
   document.body.style.overflow = 'hidden'
   document.documentElement.style.overflow = 'hidden'
 })
@@ -392,6 +393,19 @@ function handleExport() {
   URL.revokeObjectURL(url)
 }
 
+function handleSave() {
+  settingsStore.saveAndSync()
+  settingsStore.takeSnapshot()
+  toast.success('设置已保存')
+}
+
+function handleClose() {
+  if (settingsStore.hasChanges()) {
+    settingsStore.revertSettings()
+  }
+  emit('close')
+}
+
 const showResetDialog = ref(false)
 
 function handleReset() {
@@ -400,6 +414,7 @@ function handleReset() {
 
 function doResetSettings() {
   settingsStore.resetSettingsOnly()
+  settingsStore.takeSnapshot()
   showResetDialog.value = false
   navStore.reloadFromStorage()
   toast.success('基础设置已重置，书签数据已保留')
@@ -407,6 +422,7 @@ function doResetSettings() {
 
 function doResetAll() {
   settingsStore.resetAll()
+  settingsStore.takeSnapshot()
   showResetDialog.value = false
   navStore.reloadFromStorage()
   toast.success('所有设置和书签数据已重置')
@@ -628,11 +644,11 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 </script>
 
 <template>
-  <div class="settings-overlay" @mousedown.self="emit('close')">
+  <div class="settings-overlay" @mousedown.self="handleClose">
     <div class="settings-modal">
       <div class="settings-header">
         <h3>设置</h3>
-        <button class="close-btn" @click="emit('close')">
+        <button class="close-btn" @click="handleClose">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
@@ -1259,6 +1275,11 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </Transition>
         </div>
       </Transition>
+
+      <div v-if="settingsStore.hasChanges()" class="settings-footer">
+        <button class="btn btn-secondary" @click="settingsStore.revertSettings()">重置更改</button>
+        <button class="btn btn-primary" @click="handleSave">保存</button>
+      </div>
     </div>
   </div>
 </template>
@@ -1364,6 +1385,16 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   padding: 20px 24px;
   overflow-y: auto;
   flex: 1;
+}
+
+.settings-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: 0 0 16px 16px;
 }
 
 .settings-section {
