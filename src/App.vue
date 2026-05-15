@@ -187,10 +187,21 @@ function cancelBatchDelete() {
 }
 
 function handleBatchPin() {
-  const count = navStore.selectedLinkIds.size
-  if (count === 0) return
   const pinned = navStore.batchPinLinks()
-  toast.success(`已置顶 ${pinned} 个链接`)
+  if (pinned > 0) {
+    toast.success(`已置顶 ${pinned} 个链接`)
+  } else {
+    toast.warning('选中的链接已全部置顶')
+  }
+}
+
+function handleBatchUnpin() {
+  const unpinned = navStore.batchUnpinLinks()
+  if (unpinned > 0) {
+    toast.success(`已取消置顶 ${unpinned} 个链接`)
+  } else {
+    toast.warning('选中的链接均未置顶')
+  }
 }
 
 function handleUndoDelete() {
@@ -402,6 +413,10 @@ function toggleTools() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.76z"/></svg>
             置顶
           </button>
+          <button class="batch-btn pin" :disabled="navStore.selectedLinkIds.size === 0" @click="handleBatchUnpin">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.76z"/></svg>
+            取消置顶
+          </button>
           <button class="batch-btn move" :disabled="navStore.selectedLinkIds.size === 0" @click="openBatchMove">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             移动
@@ -422,8 +437,8 @@ function toggleTools() {
         </div>
         <EmptyState v-if="isEmpty" @add-category="openAddCategory" @open-settings="showSettings = true" />
         <template v-else>
-          <PinnedSection @open-editor="openEditor" />
-          <CategorySection @open-editor="openEditor" />
+          <PinnedSection @open-editor="openEditor" @batch-pin="handleBatchPin" @batch-unpin="handleBatchUnpin" @batch-delete="handleBatchDelete" />
+          <CategorySection @open-editor="openEditor" @batch-pin="handleBatchPin" @batch-unpin="handleBatchUnpin" @batch-delete="handleBatchDelete" />
         </template>
       </div>
     </main>

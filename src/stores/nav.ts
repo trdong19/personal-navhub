@@ -250,27 +250,33 @@ export const useNavStore = defineStore('nav', () => {
 
   // 批量操作
   function batchPinLinks(): number {
-    const count = selectedLinkIds.value.size
-    if (count === 0) return 0
-    for (const link of links.value) {
-      if (selectedLinkIds.value.has(link.id) && !link.pinned) {
-        link.pinned = true
-        link.pinnedOrder = (link.pinnedOrder || 0)
-      }
+    if (selectedLinkIds.value.size === 0) return 0
+    const selectedIds = [...selectedLinkIds.value]
+    const toPin = links.value.filter(l => selectedIds.includes(l.id) && !l.pinned)
+    if (toPin.length === 0) return 0
+    const maxOrder = links.value.reduce((max, l) => l.pinned ? Math.max(max, l.pinnedOrder || 0) : max, -1)
+    let order = maxOrder + 1
+    for (const link of toPin) {
+      link.pinned = true
+      link.pinnedOrder = order++
     }
-    const pinnedLinks = links.value.filter(l => selectedLinkIds.value.has(l.id) && l.pinned)
-    const maxPinnedOrder = pinnedLinks.length > 0 
-      ? Math.max(...links.value.filter(l => l.pinned).map(l => l.pinnedOrder || 0))
-      : -1
-    let order = maxPinnedOrder + 1
-    for (const link of links.value) {
-      if (selectedLinkIds.value.has(link.id) && link.pinned) {
-        link.pinnedOrder = order++
-      }
-    }
-    saveLinks()
     exitSelectionMode()
-    return count
+    saveLinks()
+    return toPin.length
+  }
+
+  function batchUnpinLinks(): number {
+    if (selectedLinkIds.value.size === 0) return 0
+    const selectedIds = [...selectedLinkIds.value]
+    const toUnpin = links.value.filter(l => selectedIds.includes(l.id) && l.pinned)
+    if (toUnpin.length === 0) return 0
+    for (const link of toUnpin) {
+      link.pinned = false
+      link.pinnedOrder = undefined
+    }
+    exitSelectionMode()
+    saveLinks()
+    return toUnpin.length
   }
 
   // 删除撤回
@@ -754,6 +760,7 @@ export const useNavStore = defineStore('nav', () => {
     batchDeleteLinks,
     batchMoveLinks,
     batchPinLinks,
+    batchUnpinLinks,
     restoreDeletedLinks,
     restoreMovedLinks,
     recordMove,

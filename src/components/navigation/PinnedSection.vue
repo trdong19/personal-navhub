@@ -11,12 +11,16 @@ import type { ContextMenuItem } from '@/components/common/ContextMenu.vue'
 
 const emit = defineEmits<{
   'open-editor': [id: string]
+  'batch-pin': []
+  'batch-unpin': []
+  'batch-delete': []
 }>()
 
 const navStore = useNavStore()
 const networkStore = useNetworkStore()
 const draggingId = ref<string | null>(null)
 const gridRef = ref<HTMLElement | null>(null)
+const pinnedCollapsed = ref(false)
 
 const entrance = useCardEntrance(gridRef)
 const { recordPositions, animateFlip } = useFlipSort(gridRef)
@@ -95,31 +99,63 @@ const ctxMenuItems = computed<ContextMenuItem[]>(() => {
     items.push({ label: '', action: () => {} })
   }
 
-  // 添加其他菜单项（置顶区只有取消置顶）
-  items.push(
-    {
-      label: '取消置顶',
-      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>',
-      action: () => { if (link) navStore.updateLink(link.id, { pinned: false }) },
-    },
-    {
-      label: '编辑',
-      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
-      action: () => emit('open-editor', ctxMenu.value.linkId),
-    },
-    { label: '', action: () => {} },
-    {
-      label: '删除',
-      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
-      danger: true,
-      action: () => {
-        if (link) {
-          deleteLinkTarget.value = link
-          showDeleteConfirm.value = true
-        }
+  // 添加其他菜单项
+  if (navStore.selectionMode) {
+    // 批量模式
+    items.push(
+      {
+        label: '批量置顶',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>',
+        action: () => { emit('batch-pin') },
       },
-    },
-  )
+      {
+        label: '批量取消置顶',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>',
+        action: () => { emit('batch-unpin') },
+      },
+      { label: '', action: () => {} },
+      {
+        label: '批量删除',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+        danger: true,
+        action: () => { emit('batch-delete') },
+      },
+    )
+  } else {
+    // 单卡模式
+    items.push(
+      {
+        label: '取消置顶',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>',
+        action: () => { if (link) navStore.updateLink(link.id, { pinned: false }) },
+      },
+      {
+        label: '编辑',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+        action: () => emit('open-editor', ctxMenu.value.linkId),
+      },
+      { label: '', action: () => {} },
+      {
+        label: '批量选择',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>',
+        action: () => {
+          navStore.enterSelectionMode()
+          navStore.toggleLinkSelection(ctxMenu.value.linkId)
+        },
+      },
+      {
+        label: '删除',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+        danger: true,
+        action: () => {
+          if (link) {
+            deleteLinkTarget.value = link
+            showDeleteConfirm.value = true
+          }
+        },
+      },
+    )
+  }
 
   return items
 })
@@ -145,22 +181,26 @@ const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
 
 <template>
   <section v-if="navStore.pinnedLinks.length > 0" class="pinned-section">
-    <h2 class="section-title">
+    <h2 class="section-title" @click="pinnedCollapsed = !pinnedCollapsed">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>
       常用导航
+      <svg class="collapse-icon" :class="{ collapsed: pinnedCollapsed }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
     </h2>
-    <div ref="gridRef" class="nav-grid">
-      <NavCard
-        v-for="link in navStore.pinnedLinks"
-        :key="link.id"
-        :link="link"
-        @edit="emit('open-editor', $event)"
-        @contextmenu="handleCardContextMenu"
-        @dragstart="handleDragStart"
-        @dragover="handleDragOver($event)"
-        @dragend="handleDragEnd"
-      />
-    </div>
+    <Transition name="collapse">
+      <div v-show="!pinnedCollapsed" ref="gridRef" class="nav-grid">
+        <NavCard
+          v-for="link in navStore.pinnedLinks"
+          :key="link.id"
+          :link="link"
+          :link-ids="navStore.pinnedLinks.map(l => l.id)"
+          @edit="emit('open-editor', $event)"
+          @contextmenu="handleCardContextMenu"
+          @dragstart="handleDragStart"
+          @dragover="handleDragOver($event)"
+          @dragend="handleDragEnd"
+        />
+      </div>
+    </Transition>
 
     <ContextMenu
       :visible="ctxMenu.visible"
@@ -197,6 +237,36 @@ const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
   font-size: 18px;
   font-weight: 700;
   color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapse-icon {
+  margin-left: auto;
+  transition: transform 0.25s ease;
+  opacity: 0.5;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.25s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 2000px;
 }
 
 .nav-grid {
@@ -214,7 +284,7 @@ const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
 
 @media (max-width: 480px) {
   .nav-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 }
