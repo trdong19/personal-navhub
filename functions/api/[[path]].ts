@@ -51,29 +51,15 @@ function generateSalt(): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-async function extractUser(token: string, env: Env): Promise<string | null> {
-  const raw = await env.NAV_KV.get(`token:${token}`)
-  if (!raw) return null
-  try {
-    const data = JSON.parse(raw)
-    return data.username
-  } catch {
-    return null
-  }
+async function isValidToken(token: string, env: Env): Promise<boolean> {
+  const stored = await env.NAV_KV.get('system:active_token')
+  return stored === token
 }
 
-async function getUserRole(username: string, env: Env): Promise<string> {
-  const raw = await env.NAV_KV.get(`user:${username}`)
-  if (!raw) return 'user'
-  try {
-    return JSON.parse(raw).role || 'user'
-  } catch {
-    return 'user'
-  }
-}
-
-async function isAdmin(username: string, env: Env): Promise<boolean> {
-  return (await getUserRole(username, env)) === 'admin'
+function getToken(req: Request): string | null {
+  const auth = req.headers.get('Authorization')
+  if (!auth) return null
+  return auth.replace('Bearer ', '') || null
 }
 
 function resHash(data: string): string {
@@ -85,45 +71,15 @@ function resHash(data: string): string {
   return `${data.length}_${h}`
 }
 
-async function getUserResourcesMeta(username: string, env: Env): Promise<Record<string, string> | undefined> {
-  const list = await env.NAV_KV.list({ prefix: `res:${username}:` })
+async function getResourcesMeta(env: Env): Promise<Record<string, string> | undefined> {
+  const list = await env.NAV_KV.list({ prefix: 'res:' })
   if (list.keys.length === 0) return undefined
   const meta: Record<string, string> = {}
   for (const key of list.keys) {
     const val = await env.NAV_KV.get(key.name)
-    if (val) {
-      const resId = key.name.replace(`res:${username}:`, '')
-      meta[resId] = resHash(val)
-    }
+    if (val) meta[key.name.replace('res:', '')] = resHash(val)
   }
   return Object.keys(meta).length > 0 ? meta : undefined
-}
-
-async function getUserResources(username: string, env: Env, ids?: string[]): Promise<Record<string, string> | undefined> {
-  if (ids && ids.length > 0) {
-    const result: Record<string, string> = {}
-    for (const id of ids) {
-      const val = await env.NAV_KV.get(`res:${username}:${id}`)
-      if (val) result[id] = val
-    }
-    return Object.keys(result).length > 0 ? result : undefined
-  }
-  const list = await env.NAV_KV.list({ prefix: `res:${username}:` })
-  if (list.keys.length === 0) return undefined
-  const result: Record<string, string> = {}
-  for (const key of list.keys) {
-    const val = await env.NAV_KV.get(key.name)
-    if (val) {
-      const resId = key.name.replace(`res:${username}:`, '')
-      result[resId] = val
-    }
-  }
-  return Object.keys(result).length > 0 ? result : undefined
-}
-
-async function hasAnyUser(env: Env): Promise<boolean> {
-  const list = await env.NAV_KV.list({ prefix: 'user:', limit: 1 })
-  return list.keys.length > 0
 }
 
 export const onRequestOptions: PagesFunction<Env> = async () => {
@@ -133,391 +89,245 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     if (!context.env.NAV_KV) {
-      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard → Pages → 设置 → Functions → KV 命名空间绑定中添加 NAV_KV' }, 500)
+      return json({ error: 'KV 存储未配置' }, 500)
     }
     const url = new URL(context.request.url)
     const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
     const action = parts[0]
     const env = context.env
 
-  if (action === 'register') {
-    let body: { username: string; password: string }
-    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+    // ---------- 首次设置密码 ----------
+    if (action === 'setup') {
+      const existing = await env.NAV_KV.get('system:credential')
+      if (existing) return json({ error: '密码已设置，请使用登录' }, 400)
 
-    const regRaw = await env.NAV_KV.get('system:registration_enabled')
-    if (regRaw === 'false') {
-      return json({ error: '注册功能已关闭' }, 403)
-    }
-
-    const { username, password } = body
-    if (!username || username.length < 2 || username.length > 20) {
-      return json({ error: '用户名需要2-20个字符' }, 400)
-    }
-    if (!password || password.length < 4) {
-      return json({ error: '密码至少4个字符' }, 400)
-    }
-    if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(username)) {
-      return json({ error: '用户名只能包含字母、数字、下划线或中文' }, 400)
-    }
-
-    const existing = await env.NAV_KV.get(`user:${username}`)
-    if (existing) {
-      return json({ error: '用户名已存在' }, 409)
-    }
-
-    const isFirst = !(await hasAnyUser(env))
-    const role = isFirst ? 'admin' : 'user'
-    const salt = generateSalt()
-    const hash = await hashPassword(password, salt)
-    await env.NAV_KV.put(`user:${username}`, JSON.stringify({ hash, salt, createdAt: Date.now(), role }))
-
-    const initData: SyncData = {
-      settings: null, links: [], categories: [], accessRecords: [],
-      updatedAt: Date.now(), version: 1,
-    }
-    await env.NAV_KV.put(`data:${username}`, JSON.stringify(initData))
-
-    const token = generateToken()
-    await env.NAV_KV.put(`token:${token}`, JSON.stringify({ username }), { expirationTtl: 86400 * 30 })
-
-    return json({ success: true, token, username, role })
-  }
-
-  if (action === 'login') {
-    let body: { username: string; password: string; rememberMe?: boolean }
-    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
-
-    const { username, password, rememberMe } = body
-    if (!username || !password) {
-      return json({ error: '请输入用户名和密码' }, 400)
-    }
-
-    const raw = await env.NAV_KV.get(`user:${username}`)
-    if (!raw) {
-      return json({ error: '用户名或密码错误' }, 401)
-    }
-
-    const user = JSON.parse(raw)
-    const hash = await hashPassword(password, user.salt)
-    if (hash !== user.hash) {
-      return json({ error: '用户名或密码错误' }, 401)
-    }
-
-    const token = generateToken()
-    const ttl = rememberMe ? 86400 * 30 : 86400
-    await env.NAV_KV.put(`token:${token}`, JSON.stringify({ username }), { expirationTtl: ttl })
-
-    return json({ success: true, token, username, role: user.role || 'user' })
-  }
-
-  if (action === 'sync') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ error: '未登录' }, 401)
-
-    const username = await extractUser(token, env)
-    if (!username) return json({ error: '登录已过期' }, 401)
-
-    let body: { data: Record<string, unknown> }
-    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
-
-    const incoming = JSON.stringify({
-      s: body.data.settings,
-      l: body.data.links,
-      c: body.data.categories,
-      r: body.data.accessRecords,
-    })
-
-    const existingRaw = await env.NAV_KV.get(`data:${username}`)
-    let version = 1
-    if (existingRaw) {
-      const existing = JSON.parse(existingRaw)
-      const clientVersion = body.data?.version || 0
-
-      // 版本冲突检测：客户端版本落后于服务端，说明其他设备已更新
-      if (clientVersion > 0 && clientVersion < existing.version) {
-        return json({
-          error: '数据冲突，请先拉取最新数据',
-          conflict: true,
-          serverVersion: existing.version,
-        }, 409)
-      }
-
-      version = (existing.version || 0) + 1
-      const existingCompact = JSON.stringify({
-        s: existing.settings,
-        l: existing.links,
-        c: existing.categories,
-        r: existing.accessRecords,
-      })
-      const noDataChange = incoming === existingCompact
-      const noResChange = !body.data.resources || Object.keys(body.data.resources).length === 0
-
-      if (noDataChange && noResChange) {
-        return json({ success: true, version: existing.version, updatedAt: existing.updatedAt, skipped: true })
-      }
-    } else {
-      version = 1
-    }
-
-    const syncData: SyncData = {
-      settings: body.data.settings as SyncData['settings'],
-      links: (body.data.links as unknown[]) || [],
-      categories: (body.data.categories as unknown[]) || [],
-      accessRecords: (body.data.accessRecords as unknown[]) || [],
-      updatedAt: Date.now(),
-      version,
-    }
-
-    await env.NAV_KV.put(`data:${username}`, JSON.stringify(syncData))
-
-    if (body.data.resources && typeof body.data.resources === 'object') {
-      const resources = body.data.resources as Record<string, string>
-      for (const [key, val] of Object.entries(resources)) {
-        const existingRes = await env.NAV_KV.get(`res:${username}:${key}`)
-        if (existingRes !== val) {
-          await env.NAV_KV.put(`res:${username}:${key}`, val)
-        }
-      }
-    }
-
-    return json({ success: true, version: syncData.version, updatedAt: syncData.updatedAt })
-  }
-
-  if (action === 'upload-resource') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ error: '未登录' }, 401)
-
-    const username = await extractUser(token, env)
-    if (!username) return json({ error: '登录已过期' }, 401)
-
-    let body: { id: string; data: string }
-    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
-
-    const { id, data } = body
-    if (!id || !data) return json({ error: '缺少资源数据' }, 400)
-
-    await env.NAV_KV.put(`res:${username}:${id}`, data)
-
-    return json({ success: true, id })
-  }
-
-  if (action === 'pull') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ error: '未登录' }, 401)
-
-    const username = await extractUser(token, env)
-    if (!username) return json({ error: '登录已过期' }, 401)
-
-    const raw = await env.NAV_KV.get(`data:${username}`)
-    if (!raw) {
-      return json({ data: null, message: '暂无数据' })
-    }
-
-    const data: SyncData & { resources?: Record<string, string>; resourcesMeta?: Record<string, string> } = JSON.parse(raw)
-    const resourcesMeta = await getUserResourcesMeta(username, env)
-    if (resourcesMeta) {
-      data.resourcesMeta = resourcesMeta
-    }
-
-    return json({ data, updatedAt: data.updatedAt, version: data.version })
-  }
-
-  if (action === 'pull-resources') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ error: '未登录' }, 401)
-
-    const username = await extractUser(token, env)
-    if (!username) return json({ error: '登录已过期' }, 401)
-
-    let body: { ids: string[] }
-    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
-
-    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
-      return json({ resources: {} })
-    }
-
-    const resources = await getUserResources(username, env, body.ids)
-    return json({ resources: resources || {} })
-  }
-
-  if (action === 'logout') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (token) {
-      await env.NAV_KV.delete(`token:${token}`)
-    }
-    return json({ success: true })
-  }
-
-  if (action === 'admin') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ error: '未登录' }, 401)
-
-    const username = await extractUser(token, env)
-    if (!username || !(await isAdmin(username, env))) {
-      return json({ error: '权限不足' }, 403)
-    }
-
-    const subAction = parts[1]
-
-    if (subAction === 'users') {
-      const list = await env.NAV_KV.list({ prefix: 'user:' })
-      const users = []
-      for (const key of list.keys) {
-        const val = await env.NAV_KV.get(key.name)
-        if (val) {
-          const data = JSON.parse(val)
-          users.push({
-            username: key.name.replace('user:', ''),
-            role: data.role || 'user',
-            createdAt: data.createdAt,
-          })
-        }
-      }
-      return json({ users })
-    }
-
-    if (subAction === 'add-user') {
-      let body: { username: string; password: string }
+      let body: { password: string }
       try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
 
-      const { username: newUser, password: newPassword } = body
-      if (!newUser || newUser.length < 2 || newUser.length > 20)
-        return json({ error: '用户名需要2-20个字符' }, 400)
-      if (!newPassword || newPassword.length < 4)
+      const { password } = body
+      if (!password || password.length < 4)
         return json({ error: '密码至少4个字符' }, 400)
-      if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(newUser))
-        return json({ error: '用户名只能包含字母、数字、下划线或中文' }, 400)
-      if (await env.NAV_KV.get(`user:${newUser}`))
-        return json({ error: '用户名已存在' }, 409)
 
       const salt = generateSalt()
-      const hash = await hashPassword(newPassword, salt)
-      await env.NAV_KV.put(`user:${newUser}`, JSON.stringify({ hash, salt, createdAt: Date.now(), role: 'user' }))
-      await env.NAV_KV.put(`data:${newUser}`, JSON.stringify({
-        settings: null, links: [], categories: [], accessRecords: [],
-        updatedAt: Date.now(), version: 1,
-      }))
+      const hash = await hashPassword(password, salt)
+      await env.NAV_KV.put('system:credential', JSON.stringify({ hash, salt }))
 
-      return json({ success: true, username: newUser })
+      const token = generateToken()
+      await env.NAV_KV.put('system:active_token', token)
+
+      return json({ success: true, token })
     }
 
-    if (subAction === 'delete-user') {
-      let body: { username: string }
+    // ---------- 登录 ----------
+    if (action === 'login') {
+      const credRaw = await env.NAV_KV.get('system:credential')
+      if (!credRaw) return json({ error: '尚未设置密码，请先设置' }, 400)
+
+      let body: { password: string }
       try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
 
-      const { username: targetUser } = body
-      if (!targetUser) return json({ error: '缺少用户名' }, 400)
-      if (targetUser === username) return json({ error: '不能删除自己' }, 400)
-      if (!(await env.NAV_KV.get(`user:${targetUser}`))) return json({ error: '用户不存在' }, 404)
+      const { password } = body
+      if (!password) return json({ error: '请输入密码' }, 400)
 
-      await env.NAV_KV.delete(`user:${targetUser}`)
-      await env.NAV_KV.delete(`data:${targetUser}`)
+      const cred = JSON.parse(credRaw)
+      const hash = await hashPassword(password, cred.salt)
+      if (hash !== cred.hash) return json({ error: '密码错误' }, 401)
 
-      const tokenList = await env.NAV_KV.list({ prefix: 'token:' })
-      for (const key of tokenList.keys) {
-        const val = await env.NAV_KV.get(key.name)
-        if (val) {
-          try {
-            const data = JSON.parse(val)
-            if (data.username === targetUser) await env.NAV_KV.delete(key.name)
-          } catch {}
+      const token = generateToken()
+      await env.NAV_KV.put('system:active_token', token)
+
+      return json({ success: true, token })
+    }
+
+    // ---------- 登出 ----------
+    if (action === 'logout') {
+      await env.NAV_KV.delete('system:active_token')
+      return json({ success: true })
+    }
+
+    // ---------- 数据同步推送 ----------
+    if (action === 'sync') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { data: Record<string, unknown> }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const existingRaw = await env.NAV_KV.get('data:main')
+      let version = 1
+      if (existingRaw) {
+        const existing = JSON.parse(existingRaw)
+        const clientVersion = (body.data?.version as number) || 0
+
+        if (clientVersion > 0 && clientVersion < existing.version) {
+          return json({
+            error: '数据冲突，请先拉取最新数据',
+            conflict: true,
+            serverVersion: existing.version,
+          }, 409)
+        }
+
+        version = (existing.version || 0) + 1
+
+        const incoming = JSON.stringify({
+          s: body.data.settings,
+          l: body.data.links,
+          c: body.data.categories,
+          r: body.data.accessRecords,
+        })
+        const existingCompact = JSON.stringify({
+          s: existing.settings,
+          l: existing.links,
+          c: existing.categories,
+          r: existing.accessRecords,
+        })
+        const noDataChange = incoming === existingCompact
+        const noResChange = !body.data.resources || Object.keys(body.data.resources as object).length === 0
+
+        if (noDataChange && noResChange) {
+          return json({ success: true, version: existing.version, updatedAt: existing.updatedAt, skipped: true })
         }
       }
 
-      const resList = await env.NAV_KV.list({ prefix: `res:${targetUser}:` })
-      for (const key of resList.keys) {
-        await env.NAV_KV.delete(key.name)
+      const syncData: SyncData = {
+        settings: body.data.settings as SyncData['settings'],
+        links: (body.data.links as unknown[]) || [],
+        categories: (body.data.categories as unknown[]) || [],
+        accessRecords: (body.data.accessRecords as unknown[]) || [],
+        updatedAt: Date.now(),
+        version,
       }
+
+      await env.NAV_KV.put('data:main', JSON.stringify(syncData))
+
+      if (body.data.resources && typeof body.data.resources === 'object') {
+        const resources = body.data.resources as Record<string, string>
+        for (const [key, val] of Object.entries(resources)) {
+          const existingRes = await env.NAV_KV.get(`res:${key}`)
+          if (existingRes !== val) {
+            await env.NAV_KV.put(`res:${key}`, val)
+          }
+        }
+      }
+
+      return json({ success: true, version: syncData.version, updatedAt: syncData.updatedAt })
+    }
+
+    // ---------- 上传资源 ----------
+    if (action === 'upload-resource') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { id: string; data: string }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { id, data } = body
+      if (!id || !data) return json({ error: '缺少资源数据' }, 400)
+
+      await env.NAV_KV.put(`res:${id}`, data)
+
+      return json({ success: true, id })
+    }
+
+    // ---------- 数据拉取 ----------
+    if (action === 'pull') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) {
+        return json({ data: null, message: '暂无数据' })
+      }
+
+      const data: SyncData & { resourcesMeta?: Record<string, string> } = JSON.parse(raw)
+      const resourcesMeta = await getResourcesMeta(env)
+      if (resourcesMeta) data.resourcesMeta = resourcesMeta
+
+      return json({ data, updatedAt: data.updatedAt, version: data.version })
+    }
+
+    // ---------- 按需拉取资源 ----------
+    if (action === 'pull-resources') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { ids: string[] }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+        return json({ resources: {} })
+      }
+
+      const result: Record<string, string> = {}
+      for (const id of body.ids) {
+        const val = await env.NAV_KV.get(`res:${id}`)
+        if (val) result[id] = val
+      }
+
+      return json({ resources: result })
+    }
+
+    // ---------- 修改密码 ----------
+    if (action === 'change-password') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { oldPassword: string; newPassword: string }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { oldPassword, newPassword } = body
+      if (!oldPassword || !newPassword) return json({ error: '请输入旧密码和新密码' }, 400)
+      if (newPassword.length < 4) return json({ error: '新密码至少4个字符' }, 400)
+
+      const credRaw = await env.NAV_KV.get('system:credential')
+      if (!credRaw) return json({ error: '未设置密码' }, 400)
+
+      const cred = JSON.parse(credRaw)
+      const hash = await hashPassword(oldPassword, cred.salt)
+      if (hash !== cred.hash) return json({ error: '旧密码错误' }, 401)
+
+      const newSalt = generateSalt()
+      const newHash = await hashPassword(newPassword, newSalt)
+      await env.NAV_KV.put('system:credential', JSON.stringify({ hash: newHash, salt: newSalt }))
 
       return json({ success: true })
     }
 
-    if (subAction === 'toggle-registration') {
-      const current = await env.NAV_KV.get('system:registration_enabled')
-      const newVal = current !== 'false'
-      await env.NAV_KV.put('system:registration_enabled', newVal ? 'false' : 'true')
-      return json({ success: true, registrationEnabled: !newVal })
-    }
+    // ---------- Beacon 同步 ----------
+    if (action === 'sync-beacon') {
+      const beaconToken = url.searchParams.get('token')
+      if (!beaconToken || !(await isValidToken(beaconToken, env))) {
+        return new Response(null, { status: 204, headers: corsHeaders() })
+      }
 
-    if (subAction === 'status') {
-      const regRaw = await env.NAV_KV.get('system:registration_enabled')
-      const registrationEnabled = regRaw !== 'false'
-      const userList = await env.NAV_KV.list({ prefix: 'user:' })
-      return json({ registrationEnabled, totalUsers: userList.keys.length })
-    }
+      let body: { data: Record<string, unknown> }
+      try { body = await context.request.json() } catch { return new Response(null, { status: 204, headers: corsHeaders() }) }
 
-    return json({ error: '未知管理操作' }, 404)
-  }
+      const existingRaw = await env.NAV_KV.get('data:main')
+      let version = 1
+      if (existingRaw) {
+        const existing = JSON.parse(existingRaw)
+        const clientVersion = (body.data?.version as number) || 0
+        if (clientVersion > 0 && clientVersion < existing.version) {
+          return new Response(null, { status: 204, headers: corsHeaders() })
+        }
+        version = (existing.version || 0) + 1
+      }
 
-  if (action === 'change-password') {
-    const authHeader = context.request.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
-    if (!token) return json({ error: '未登录' }, 401)
+      const syncData: SyncData = {
+        settings: body.data.settings as SyncData['settings'],
+        links: (body.data.links as unknown[]) || [],
+        categories: (body.data.categories as unknown[]) || [],
+        accessRecords: (body.data.accessRecords as unknown[]) || [],
+        updatedAt: Date.now(),
+        version,
+      }
 
-    const username = await extractUser(token, env)
-    if (!username) return json({ error: '登录已过期' }, 401)
-
-    let body: { oldPassword: string; newPassword: string }
-    try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
-
-    const { oldPassword, newPassword } = body
-    if (!oldPassword || !newPassword) return json({ error: '请输入旧密码和新密码' }, 400)
-    if (newPassword.length < 4) return json({ error: '新密码至少4个字符' }, 400)
-
-    const raw = await env.NAV_KV.get(`user:${username}`)
-    if (!raw) return json({ error: '用户不存在' }, 404)
-
-    const user = JSON.parse(raw)
-    const hash = await hashPassword(oldPassword, user.salt)
-    if (hash !== user.hash) return json({ error: '旧密码错误' }, 401)
-
-    const newSalt = generateSalt()
-    const newHash = await hashPassword(newPassword, newSalt)
-    await env.NAV_KV.put(`user:${username}`, JSON.stringify({ ...user, hash: newHash, salt: newSalt }))
-
-    return json({ success: true })
-  }
-
-  if (action === 'sync-beacon') {
-    const beaconToken = url.searchParams.get('token')
-    if (!beaconToken) {
-      return new Response(null, { status: 204, headers: corsHeaders() })
-    }
-    const username = await extractUser(beaconToken, env)
-    if (!username) {
+      await env.NAV_KV.put('data:main', JSON.stringify(syncData))
       return new Response(null, { status: 204, headers: corsHeaders() })
     }
 
-    let body: { data: Record<string, unknown> }
-    try { body = await context.request.json() } catch { return new Response(null, { status: 204, headers: corsHeaders() }) }
-
-    const existingRaw = await env.NAV_KV.get(`data:${username}`)
-    let version = 1
-    if (existingRaw) {
-      const existing = JSON.parse(existingRaw)
-      version = (existing.version || 0) + 1
-    }
-
-    const syncData: SyncData = {
-      settings: body.data.settings as SyncData['settings'],
-      links: (body.data.links as unknown[]) || [],
-      categories: (body.data.categories as unknown[]) || [],
-      accessRecords: (body.data.accessRecords as unknown[]) || [],
-      updatedAt: Date.now(),
-      version,
-    }
-
-    await env.NAV_KV.put(`data:${username}`, JSON.stringify(syncData))
-    return new Response(null, { status: 204, headers: corsHeaders() })
-  }
-
-  return json({ error: '未知操作' }, 404)
+    return json({ error: '未知操作' }, 404)
   } catch (err: any) {
     return json({ error: `服务器内部错误: ${err.message || err}` }, 500)
   }
@@ -526,7 +336,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   try {
     if (!context.env.NAV_KV) {
-      return json({ error: 'KV 存储未配置，请在 Cloudflare Dashboard → Pages → 设置 → Functions → KV 命名空间绑定中添加 NAV_KV' }, 500)
+      return json({ error: 'KV 存储未配置' }, 500)
     }
     const url = new URL(context.request.url)
     const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
@@ -537,27 +347,18 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       return json({ status: 'ok', timestamp: Date.now() })
     }
 
-    if (action === 'me') {
-      const authHeader = context.request.headers.get('Authorization')
-      const token = authHeader?.replace('Bearer ', '')
-      if (!token) return json({ logged_in: false })
-
-      const username = await extractUser(token, env)
-      if (!username) return json({ logged_in: false })
-
-      const role = await getUserRole(username, env)
-      return json({ logged_in: true, username, role })
+    // 检查是否已设置密码
+    if (action === 'status') {
+      const cred = await env.NAV_KV.get('system:credential')
+      return json({ hasPassword: !!cred })
     }
 
+    // 版本检查
     if (action === 'check-version') {
-      const authHeader = context.request.headers.get('Authorization')
-      const token = authHeader?.replace('Bearer ', '')
-      if (!token) return json({ error: '未登录' }, 401)
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
 
-      const username = await extractUser(token, env)
-      if (!username) return json({ error: '登录已过期' }, 401)
-
-      const raw = await env.NAV_KV.get(`data:${username}`)
+      const raw = await env.NAV_KV.get('data:main')
       if (!raw) return json({ version: 0, updatedAt: 0 })
 
       const data = JSON.parse(raw)

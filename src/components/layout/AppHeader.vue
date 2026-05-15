@@ -3,7 +3,6 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useNavStore } from '@/stores/nav'
 import { useAuth } from '@/composables/useAuth'
-import { clearFilesByCategory } from '@/utils/fileStore'
 import { animateDropdown } from '@/composables/useAnimation'
 import { useToast } from '@/composables/useToast'
 
@@ -11,7 +10,6 @@ const emit = defineEmits<{
   'open-settings': []
   'open-editor': []
   'open-stats': []
-  'open-admin': []
   'login-success': []
   'undo-delete': []
 }>()
@@ -38,54 +36,47 @@ function handleUndoMove() {
     toast.success(`已撤回移动 ${count} 个链接`)
   }
 }
-const menuRef = ref<HTMLElement | null>(null)
 const menuDropdownRef = ref<HTMLElement | null>(null)
 const showAuthModal = ref(!auth.isLoggedIn.value)
-const isRegisterMode = ref(false)
-const authForm = ref({ username: '', password: '', rememberMe: false })
+const hasPassword = ref(false)
+const isSetupMode = ref(false)
+const authPassword = ref('')
+const authConfirmPassword = ref('')
 const authLoading = ref(false)
 const authModalRef = ref<HTMLElement | null>(null)
 
-const showAdminPanel = ref(false)
-const adminUsers = ref<{ username: string; role: string; createdAt: number }[]>([])
-const adminRegistrationEnabled = ref(false)
-const adminNewUser = ref({ username: '', password: '' })
-const adminError = ref('')
-const adminSuccess = ref('')
-
 function openAuthModal() {
   showAuthModal.value = true
-  isRegisterMode.value = false
-  authForm.value = { username: '', password: '', rememberMe: false }
+  authPassword.value = ''
+  authConfirmPassword.value = ''
 }
 
 function closeAuthModal() {
   if (!auth.isLoggedIn.value) return
   showAuthModal.value = false
-  authForm.value = { username: '', password: '', rememberMe: false }
+  authPassword.value = ''
+  authConfirmPassword.value = ''
 }
 
 async function handleAuthSubmit() {
-  if (!authForm.value.username.trim() || !authForm.value.password.trim()) return
+  if (!authPassword.value.trim()) return
+  if (isSetupMode.value && authPassword.value !== authConfirmPassword.value) {
+    auth.authMessage.value = '两次密码不一致'
+    auth.authStatus.value = 'error'
+    return
+  }
   authLoading.value = true
-  if (isRegisterMode.value) {
-    await auth.register(authForm.value.username.trim(), authForm.value.password)
-    if (auth.isLoggedIn.value) {
-      localStorage.removeItem('nav_userSettings')
-      localStorage.removeItem('nav_navLinks')
-      localStorage.removeItem('nav_navCategories')
-      localStorage.removeItem('nav_accessRecords')
-      localStorage.removeItem('nav_local_bg_image')
-      localStorage.removeItem('nav_deleted_bg_images')
-      await clearFilesByCategory('wallpaper')
-      await clearFilesByCategory('icon')
+  if (isSetupMode.value) {
+    const ok = await auth.setup(authPassword.value)
+    if (ok) {
       settingsStore.reloadFromStorage()
       navStore.reloadFromStorage()
       closeAuthModal()
+      emit('login-success')
     }
   } else {
-    await auth.login(authForm.value.username.trim(), authForm.value.password, authForm.value.rememberMe)
-    if (auth.isLoggedIn.value) {
+    const ok = await auth.login(authPassword.value)
+    if (ok) {
       await auth.flushPush()
       const serverVersion = await auth.checkServerVersion()
       const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
@@ -101,70 +92,6 @@ async function handleAuthSubmit() {
   authLoading.value = false
 }
 
-async function handleLogout() {
-  await auth.logout()
-}
-
-async function openAdminPanel() {
-  showAdminPanel.value = true
-  adminError.value = ''
-  adminSuccess.value = ''
-  showMenu.value = false
-  await loadAdminData()
-}
-
-async function loadAdminData() {
-  try {
-    const [users, status] = await Promise.all([
-      auth.adminGetUsers(),
-      auth.adminGetStatus(),
-    ])
-    adminUsers.value = users
-    adminRegistrationEnabled.value = status.registrationEnabled
-  } catch (err: any) {
-    adminError.value = err.message
-  }
-}
-
-async function handleAdminAddUser() {
-  if (!adminNewUser.value.username.trim() || !adminNewUser.value.password.trim()) return
-  adminError.value = ''
-  adminSuccess.value = ''
-  try {
-    await auth.adminAddUser(adminNewUser.value.username.trim(), adminNewUser.value.password)
-    adminSuccess.value = `用户 ${adminNewUser.value.username.trim()} 添加成功`
-    adminNewUser.value = { username: '', password: '' }
-    await loadAdminData()
-  } catch (err: any) {
-    adminError.value = err.message
-  }
-}
-
-async function handleAdminDeleteUser(u: string) {
-  if (!confirm(`确定删除用户「${u}」？该操作不可恢复。`)) return
-  adminError.value = ''
-  adminSuccess.value = ''
-  try {
-    await auth.adminDeleteUser(u)
-    adminSuccess.value = `用户 ${u} 已删除`
-    await loadAdminData()
-  } catch (err: any) {
-    adminError.value = err.message
-  }
-}
-
-async function handleToggleRegistration() {
-  adminError.value = ''
-  adminSuccess.value = ''
-  try {
-    const result = await auth.adminToggleRegistration()
-    adminRegistrationEnabled.value = result.registrationEnabled
-    adminSuccess.value = `注册功能已${result.registrationEnabled ? '开启' : '关闭'}`
-  } catch (err: any) {
-    adminError.value = err.message
-  }
-}
-
 watch(showMenu, (val) => {
   nextTick(() => {
     if (menuDropdownRef.value) {
@@ -174,7 +101,8 @@ watch(showMenu, (val) => {
 })
 
 function handleClickOutside(e: MouseEvent) {
-  if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
+  const menuEl = document.querySelector('.user-menu-fab')
+  if (menuEl && !menuEl.contains(e.target as Node)) {
     showMenu.value = false
   }
 }
@@ -186,9 +114,12 @@ function handleAuthModalBackdrop(e: MouseEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   if (!auth.isLoggedIn.value) {
+    const setup = await auth.checkSetup()
+    hasPassword.value = setup
+    isSetupMode.value = !setup
     showAuthModal.value = true
   }
 })
@@ -196,11 +127,13 @@ onMounted(() => {
 watch(() => auth.isLoggedIn.value, (loggedIn) => {
   if (!loggedIn) {
     showAuthModal.value = true
+    auth.checkSetup().then(setup => {
+      hasPassword.value = setup
+      isSetupMode.value = !setup
+    })
   }
 })
 onUnmounted(() => document.removeEventListener('click', handleClickOutside))
-
-defineExpose({ openAdminPanel })
 </script>
 
 <template>
@@ -244,130 +177,39 @@ defineExpose({ openAdminPanel })
             <h2 class="auth-modal-title">NavHub</h2>
           </div>
 
-          <div class="auth-mode-tabs">
-            <button :class="['auth-mode-btn', { active: !isRegisterMode }]" @click="isRegisterMode = false; auth.authMessage.value = ''">登录</button>
-            <button :class="['auth-mode-btn', { active: isRegisterMode }]" @click="isRegisterMode = true; auth.authMessage.value = ''">注册</button>
-          </div>
-
           <form class="auth-form" @submit.prevent="handleAuthSubmit">
             <div class="auth-field">
-              <label class="auth-label">用户名</label>
+              <label class="auth-label">{{ isSetupMode ? '设置密码' : '输入密码' }}</label>
               <input
-                v-model="authForm.username"
-                type="text"
-                class="auth-input"
-                placeholder="2-20个字符，支持中文"
-                autocomplete="username"
-              />
-            </div>
-            <div class="auth-field">
-              <label class="auth-label">密码</label>
-              <input
-                v-model="authForm.password"
+                v-model="authPassword"
                 type="password"
                 class="auth-input"
-                placeholder="4位以上"
+                :placeholder="isSetupMode ? '至少4个字符' : '请输入密码'"
                 autocomplete="current-password"
+                autofocus
               />
             </div>
-            <div v-if="!isRegisterMode" class="auth-remember-row">
-              <label class="remember-label">
-                <input v-model="authForm.rememberMe" type="checkbox" class="remember-checkbox" />
-                一个月内免登录
-              </label>
+            <div v-if="isSetupMode" class="auth-field">
+              <label class="auth-label">确认密码</label>
+              <input
+                v-model="authConfirmPassword"
+                type="password"
+                class="auth-input"
+                placeholder="再次输入密码"
+                autocomplete="new-password"
+              />
             </div>
             <div v-if="auth.authMessage.value" :class="['auth-message', auth.authStatus.value === 'error' ? 'error' : 'success']">
               {{ auth.authMessage.value }}
             </div>
-            <button type="submit" class="auth-submit" :disabled="authLoading || !authForm.username.trim() || !authForm.password.trim()">
-              {{ authLoading ? '处理中...' : (isRegisterMode ? '注册' : '登录') }}
+            <button type="submit" class="auth-submit" :disabled="authLoading || !authPassword.trim()">
+              {{ authLoading ? '处理中...' : (isSetupMode ? '创建并进入' : '登录') }}
             </button>
           </form>
         </div>
       </div>
     </Teleport>
 
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showAdminPanel" class="admin-overlay" @mousedown.self="showAdminPanel = false">
-          <Transition name="modal-pop" appear>
-            <div v-if="showAdminPanel" class="admin-modal">
-              <div class="admin-header">
-                <h3>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  管理面板
-                </h3>
-                <button class="close-btn" @click="showAdminPanel = false">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-              </div>
-
-              <div class="admin-body">
-                <div v-if="adminError" class="admin-msg admin-msg-error">{{ adminError }}</div>
-                <div v-if="adminSuccess" class="admin-msg admin-msg-success">{{ adminSuccess }}</div>
-
-                <div class="admin-section">
-                  <h4>注册控制</h4>
-                  <div class="admin-toggle-row">
-                    <span>允许新用户注册</span>
-                    <button
-                      :class="['toggle', { active: adminRegistrationEnabled }]"
-                      @click="handleToggleRegistration"
-                    >
-                      {{ adminRegistrationEnabled ? '已开启' : '已关闭' }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="admin-section">
-                  <h4>添加用户</h4>
-                  <div class="admin-add-form">
-                    <input
-                      v-model="adminNewUser.username"
-                      type="text"
-                      class="admin-input"
-                      placeholder="用户名"
-                    />
-                    <input
-                      v-model="adminNewUser.password"
-                      type="password"
-                      class="admin-input"
-                      placeholder="密码"
-                      @keyup.enter="handleAdminAddUser"
-                    />
-                    <button class="admin-btn admin-btn-primary" @click="handleAdminAddUser" :disabled="!adminNewUser.username.trim() || !adminNewUser.password.trim()">
-                      添加
-                    </button>
-                  </div>
-                </div>
-
-                <div class="admin-section">
-                  <h4>用户列表 <span class="admin-count">{{ adminUsers.length }}</span></h4>
-                  <div class="admin-user-list">
-                    <div v-for="user in adminUsers" :key="user.username" class="admin-user-item">
-                      <div class="admin-user-info">
-                        <span class="admin-user-avatar">{{ user.role === 'admin' ? '👑' : '👤' }}</span>
-                        <div>
-                          <span class="admin-user-name">{{ user.username }}</span>
-                          <span :class="['admin-user-role', user.role]">{{ user.role === 'admin' ? '管理员' : '用户' }}</span>
-                        </div>
-                      </div>
-                      <button
-                        v-if="user.role !== 'admin'"
-                        class="admin-btn admin-btn-danger-sm"
-                        @click="handleAdminDeleteUser(user.username)"
-                      >
-                        删除
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Transition>
-        </div>
-      </Transition>
-    </Teleport>
   </header>
 </template>
 
@@ -541,32 +383,6 @@ defineExpose({ openAdminPanel })
   color: var(--text);
 }
 
-.auth-mode-tabs {
-  display: flex;
-  gap: 4px;
-  background: var(--bg);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 20px;
-}
-
-.auth-mode-btn {
-  flex: 1;
-  padding: 7px 0;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  transition: all var(--transition);
-  cursor: pointer;
-}
-
-.auth-mode-btn.active {
-  background: var(--bg-card);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
-
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -600,27 +416,6 @@ defineExpose({ openAdminPanel })
 
 .auth-input:focus {
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
-}
-
-.auth-remember-row {
-  display: flex;
-  align-items: center;
-}
-
-.remember-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.remember-checkbox {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
-  cursor: pointer;
 }
 
 .auth-message {
@@ -676,244 +471,6 @@ defineExpose({ openAdminPanel })
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.95) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.admin-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 5000;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-.admin-modal {
-  width: 100%;
-  max-width: 520px;
-  max-height: 85vh;
-  background: var(--bg-card);
-  border: none;
-  /* 管理面板弹窗圆角跟随全局设置 */
-  border-radius: var(--radius);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.admin-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 24px;
-  border-bottom: none;
-}
-
-.admin-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.admin-body {
-  padding: 20px 24px;
-  overflow-y: auto;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.admin-msg {
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.admin-msg-error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-.admin-msg-success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
-}
-
-.admin-section h4 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.admin-count {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.admin-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--bg);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.toggle {
-  padding: 5px 14px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-}
-
-.toggle.active {
-  background: #22c55e;
-  color: white;
-}
-
-.admin-add-form {
-  display: flex;
-  gap: 8px;
-}
-
-.admin-input {
-  flex: 1;
-  padding: 8px 12px;
-  border: none;
-  border-radius: 10px;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--bg);
-  outline: none;
-  transition: box-shadow 0.2s ease;
-  box-sizing: border-box;
-}
-
-.admin-input:focus {
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
-}
-
-.admin-btn {
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-  white-space: nowrap;
-}
-
-.admin-btn-primary {
-  background: var(--primary);
-  color: white;
-}
-
-.admin-btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.admin-btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.admin-btn-danger-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.admin-btn-danger-sm:hover {
-  background: #ef4444;
-  color: white;
-}
-
-.admin-user-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.admin-user-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: var(--bg);
-  border-radius: 10px;
-  transition: all 0.2s ease;
-}
-
-.admin-user-item:hover {
-  background: var(--bg-hover);
-}
-
-.admin-user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.admin-user-avatar {
-  font-size: 18px;
-}
-
-.admin-user-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  display: block;
-}
-
-.admin-user-role {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.admin-user-role.admin {
-  background: rgba(234, 179, 8, 0.1);
-  color: #eab308;
-}
-
-.admin-user-role.user {
-  background: var(--bg-secondary);
-  color: var(--text-muted);
 }
 
 @media (max-width: 768px) {

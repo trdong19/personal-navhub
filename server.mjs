@@ -1,7 +1,6 @@
 /**
- * NavHub 后端服务 - 纯 Node.js HTTP 服务器
- * 提供用户认证、数据同步、资源管理、管理员功能等 API
- * 同时提供静态文件服务（生产环境部署时使用）
+ * NavHub 后端服务 - 单密码认证
+ * 提供密码认证、数据同步、资源管理等 API
  */
 import http from 'node:http'
 import crypto from 'node:crypto'
@@ -33,19 +32,16 @@ const MIME = {
   '.ttf': 'font/ttf',
 }
 
-// ==================== 文件持久化存储 ====================
+// ==================== 数据存储 ====================
 
-/** 用户数据 Map: key=用户名, value={hash, salt, createdAt, role} */
-const users = new Map()
-/** Token 映射 Map: key=token字符串, value=用户名 */
-const tokens = new Map()
-/** 用户数据存储 Map: key=用户名, value={settings, links, categories, accessRecords, updatedAt, version} */
-const dataStore = new Map()
-/** 资源存储 Map: key="用户名:资源ID", value=dataUrl字符串（背景图、favicon、图标等） */
+/** 单密码认证: { hash, salt } | null */
+let credential = null
+/** 单个活跃 token */
+let activeToken = null
+/** 应用数据 */
+let appData = { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0 }
+/** 资源存储 (背景图、favicon 等) */
 const resources = new Map()
-
-/** 注册功能是否开启（管理员可控制） */
-let registrationEnabled = true
 
 let saveTimer = null
 
@@ -55,12 +51,30 @@ function loadFromDisk() {
     if (!fs.existsSync(DATA_FILE)) return
     const raw = fs.readFileSync(DATA_FILE, 'utf-8')
     const data = JSON.parse(raw)
-    if (data.users) for (const [k, v] of data.users) users.set(k, v)
-    if (data.tokens) for (const [k, v] of data.tokens) tokens.set(k, v)
-    if (data.dataStore) for (const [k, v] of data.dataStore) dataStore.set(k, v)
-    if (data.resources) for (const [k, v] of data.resources) resources.set(k, v)
-    if (data.registrationEnabled !== undefined) registrationEnabled = data.registrationEnabled
-    console.log(`[持久化] 已加载: ${users.size}用户, ${dataStore.size}数据, ${resources.size}资源`)
+    // 兼容旧格式：从 users Map 迁移
+    if (data.users && data.users.length > 0) {
+      const first = data.users[0]
+      credential = { hash: first[1].hash, salt: first[1].salt }
+      // 迁移第一个用户的数据
+      if (data.dataStore && data.dataStore.length > 0) {
+        appData = data.dataStore[0][1]
+      }
+      // 迁移资源：去掉 username: 前缀
+      if (data.resources) {
+        const prefix = first[0] + ':'
+        for (const [k, v] of data.resources) {
+          resources.set(k.startsWith(prefix) ? k.substring(prefix.length) : k, v)
+        }
+      }
+      console.log('[迁移] 已从旧格式迁移数据')
+    } else {
+      // 新格式
+      if (data.credential) credential = data.credential
+      if (data.activeToken) activeToken = data.activeToken
+      if (data.appData) appData = data.appData
+      if (data.resources) for (const [k, v] of data.resources) resources.set(k, v)
+    }
+    console.log(`[持久化] 已加载: ${credential ? '已设密码' : '未设密码'}, ${resources.size}资源`)
   } catch (err) {
     console.error('[持久化] 加载失败:', err.message)
   }
@@ -75,11 +89,10 @@ function saveToDisk() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
     const data = {
-      users: [...users.entries()],
-      tokens: [...tokens.entries()],
-      dataStore: [...dataStore.entries()],
+      credential,
+      activeToken,
+      appData,
       resources: [...resources.entries()],
-      registrationEnabled,
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(data), 'utf-8')
   } catch (err) {
@@ -89,21 +102,8 @@ function saveToDisk() {
 
 loadFromDisk()
 
-// ==================== 初始化 ====================
-
-function isAdmin(username) {
-  const user = users.get(username)
-  return user && user.role === 'admin'
-}
-
 // ==================== 工具函数 ====================
 
-/**
- * 发送 JSON 响应（带 CORS 头）
- * @param {http.ServerResponse} res - 响应对象
- * @param {object} data - 要返回的 JSON 数据
- * @param {number} status - HTTP 状态码，默认 200
- */
 function json(res, data, status = 200) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -115,12 +115,6 @@ function json(res, data, status = 200) {
   res.end(JSON.stringify(data))
 }
 
-/**
- * 读取请求体并解析为 JSON
- * 超过 MAX_BODY_SIZE 时返回 {_oversized: true}
- * @param {http.IncomingMessage} req - 请求对象
- * @returns {Promise<object>} 解析后的 JSON 对象
- */
 function readBody(req) {
   return new Promise((resolve) => {
     let body = ''
@@ -140,45 +134,18 @@ function readBody(req) {
   })
 }
 
-/**
- * PBKDF2 密码哈希（10万次迭代，SHA-256）
- * @param {string} password - 明文密码
- * @param {string} salt - 盐值（hex字符串）
- * @returns {string} 哈希后的密码（hex字符串）
- */
 function hashPassword(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256').toString('hex')
 }
 
-/**
- * 生成随机十六进制字符串
- * @param {number} bytes - 随机字节数
- * @returns {string} hex 字符串
- */
 function randomHex(bytes) {
   return crypto.randomBytes(bytes).toString('hex')
 }
 
-/**
- * 从请求头的 Authorization 中提取 token，并查找对应的用户名
- * @param {http.IncomingMessage} req - 请求对象
- * @returns {string|null} 用户名或 null
- */
-function getTokenUser(req) {
+function isValidToken(req) {
   const auth = req.headers.authorization || ''
   const token = auth.replace('Bearer ', '')
-  if (!token) return null
-  return tokens.get(token) || null
-}
-
-/**
- * 生成资源存储的 key，格式为 "用户名:资源ID"
- * @param {string} username - 用户名
- * @param {string} resourceId - 资源ID
- * @returns {string}
- */
-function getResourceKey(username, resourceId) {
-  return `${username}:${resourceId}`
+  return token && token === activeToken
 }
 
 function resHash(data) {
@@ -190,12 +157,10 @@ function resHash(data) {
   return `${data.length}_${h}`
 }
 
-/** 请求体最大限制: 50MB */
 const MAX_BODY_SIZE = 50 * 1024 * 1024
 
 // ==================== 静态文件服务 ====================
 
-/** dist 目录是否存在（生产环境构建产物） */
 const hasDist = fs.existsSync(DIST_DIR)
 
 function serveStatic(req, res, url) {
@@ -209,7 +174,6 @@ function serveStatic(req, res, url) {
     res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable' })
     res.end(content)
   } else {
-    // SPA 回退：所有未匹配路径返回 index.html
     const indexPath = path.join(DIST_DIR, 'index.html')
     if (fs.existsSync(indexPath)) {
       const content = fs.readFileSync(indexPath)
@@ -222,10 +186,9 @@ function serveStatic(req, res, url) {
   }
 }
 
-// ==================== HTTP 服务器主逻辑 ====================
+// ==================== HTTP 服务器 ====================
 
 const server = http.createServer(async (req, res) => {
-  // CORS 预检请求处理
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
@@ -238,7 +201,6 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, 'http://localhost')
 
-  // 非 /api 请求：静态文件服务（仅当 dist 目录存在时）
   if (!url.pathname.startsWith('/api/') && url.pathname !== '/api') {
     if (hasDist) return serveStatic(req, res, url)
     res.writeHead(404)
@@ -246,237 +208,187 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  // 解析 URL，提取 API 路径段
   const parts = url.pathname.replace('/api/', '').split('/').filter(Boolean)
   const action = parts[0]
 
-  // ==================== GET 请求处理 ====================
+  // ==================== GET ====================
   if (req.method === 'GET') {
-    // 健康检查接口
     if (action === 'health') return json(res, { status: 'ok', timestamp: Date.now() })
 
-    // 获取当前登录用户信息
-    if (action === 'me') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { logged_in: false })
-      const user = users.get(username)
-      const role = user?.role || 'user'
-      return json(res, { logged_in: true, username, role })
+    // 检查是否已设置密码
+    if (action === 'status') {
+      return json(res, { hasPassword: !!credential })
     }
 
-    // 获取指定资源（背景图、favicon 等）
+    // 轻量版本检查
+    if (action === 'check-version') {
+      if (!isValidToken(req)) return json(res, { error: '未登录' }, 401)
+      return json(res, { version: appData.version || 0, updatedAt: appData.updatedAt || 0 })
+    }
+
+    // 获取资源
     if (action === 'resource') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '未登录' }, 401)
+      if (!isValidToken(req)) return json(res, { error: '未登录' }, 401)
       const resourceId = parts[1]
       if (!resourceId) return json(res, { error: '缺少资源ID' }, 400)
-      const data = resources.get(getResourceKey(username, resourceId))
+      const data = resources.get(resourceId)
       if (!data) return json(res, { error: '资源不存在' }, 404)
       return json(res, { data })
-    }
-
-    // 轻量版本检查：只返回 version 和 updatedAt，用于多端同步检测
-    if (action === 'check-version') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '未登录' }, 401)
-      const data = dataStore.get(username)
-      if (!data) return json(res, { version: 0, updatedAt: 0 })
-      return json(res, { version: data.version || 0, updatedAt: data.updatedAt || 0 })
     }
 
     return json(res, { error: 'Not found' }, 404)
   }
 
-  // ==================== POST 请求处理 ====================
+  // ==================== POST ====================
   if (req.method === 'POST') {
+    console.log(`[POST] ${url.pathname} → action=${action}`)
     const body = await readBody(req)
     if (body._oversized) return json(res, { error: '请求体过大' }, 413)
 
-    // ---------- 用户注册 ----------
-    if (action === 'register') {
-      if (!registrationEnabled) {
-        return json(res, { error: '注册已关闭，请联系管理员开通账号' }, 403)
-      }
-      const { username, password } = body
-      if (!username || username.length < 2 || username.length > 20)
-        return json(res, { error: '用户名需要2-20个字符' }, 400)
+    // ---------- 首次设置密码 ----------
+    if (action === 'setup') {
+      if (credential) return json(res, { error: '密码已设置，请使用登录' }, 400)
+      const { password } = body
       if (!password || password.length < 4)
         return json(res, { error: '密码至少4个字符' }, 400)
-      if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(username))
-        return json(res, { error: '用户名只能包含字母、数字、下划线或中文' }, 400)
-      if (users.has(username))
-        return json(res, { error: '用户名已存在' }, 409)
-
       const salt = randomHex(16)
       const hash = hashPassword(password, salt)
-      const isFirst = users.size === 0
-      const role = isFirst ? 'admin' : 'user'
-      users.set(username, { hash, salt, createdAt: Date.now(), role })
-      dataStore.set(username, {
-        settings: null, links: [], categories: [], accessRecords: [],
-        updatedAt: Date.now(), version: 1,
-      })
-
-      const token = randomHex(32)
-      tokens.set(token, username)
-      saveToDisk() // 注册时立即保存token，防止重启丢失
-
-      console.log(`[注册] ${username} role=${role}`)
-      return json(res, { success: true, token, username, role })
+      credential = { hash, salt }
+      activeToken = randomHex(32)
+      saveToDisk()
+      console.log('[设置密码] 首次密码已设置')
+      return json(res, { success: true, token: activeToken })
     }
 
-    // ---------- 用户登录 ----------
+    // ---------- 登录 ----------
     if (action === 'login') {
-      const { username, password, rememberMe } = body
-      if (!username || !password)
-        return json(res, { error: '请输入用户名和密码' }, 400)
-
-      const user = users.get(username)
-      if (!user)
-        return json(res, { error: '用户名或密码错误' }, 401)
-
-      const hash = hashPassword(password, user.salt)
-      if (hash !== user.hash)
-        return json(res, { error: '用户名或密码错误' }, 401)
-
-      const token = randomHex(32)
-      tokens.set(token, username)
-      saveToDisk() // 登录时立即保存token，防止重启丢失
-
-      console.log(`[登录] ${username} rememberMe=${rememberMe}`)
-      return json(res, { success: true, token, username, role: user.role || 'user' })
+      if (!credential) return json(res, { error: '尚未设置密码，请先设置' }, 400)
+      const { password } = body
+      if (!password) return json(res, { error: '请输入密码' }, 400)
+      const hash = hashPassword(password, credential.salt)
+      if (hash !== credential.hash) return json(res, { error: '密码错误' }, 401)
+      activeToken = randomHex(32)
+      saveToDisk()
+      console.log('[登录] 成功')
+      return json(res, { success: true, token: activeToken })
     }
 
-    // ---------- 数据同步推送（push）----------
-    // 前端将本地所有数据（设置、书签、分类、资源）打包上传
-    if (action === 'sync') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '登录已过期' }, 401)
+    // ---------- 登出 ----------
+    if (action === 'logout') {
+      activeToken = null
+      saveToDiskDebounced()
+      return json(res, { success: true })
+    }
 
-      const existing = dataStore.get(username)
+    // ---------- 数据同步推送 ----------
+    if (action === 'sync') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
       const clientVersion = body.data?.version || 0
 
-      // 版本冲突检测：客户端版本落后于服务端，说明其他设备已更新
-      if (existing && clientVersion > 0 && clientVersion < existing.version) {
+      if (clientVersion > 0 && clientVersion < appData.version) {
         return json(res, {
           error: '数据冲突，请先拉取最新数据',
           conflict: true,
-          serverVersion: existing.version,
+          serverVersion: appData.version,
         }, 409)
       }
 
-      // 防止空数据覆盖：客户端版本为0但服务器已有数据时，拒绝推送
-      if (existing && clientVersion === 0 && existing.version > 0) {
+      if (clientVersion === 0 && appData.version > 0) {
         return json(res, {
           error: '本地数据为空，请先拉取服务器数据',
           conflict: true,
-          serverVersion: existing.version,
+          serverVersion: appData.version,
         }, 409)
       }
 
-      const syncData = {
+      appData = {
         settings: body.data.settings,
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
-        version: (existing?.version || 0) + 1,
+        version: (appData.version || 0) + 1,
       }
 
-      // 保存资源数据（背景图 dataUrl、favicon dataUrl、图标 dataUrl 等）
       if (body.data.resources) {
         for (const [key, val] of Object.entries(body.data.resources)) {
-          resources.set(getResourceKey(username, key), val)
+          resources.set(key, val)
         }
       }
 
-      dataStore.set(username, syncData)
       saveToDiskDebounced()
-
-      console.log(`[同步推送] ${username}`)
-      return json(res, { success: true, version: syncData.version, updatedAt: syncData.updatedAt })
+      return json(res, { success: true, version: appData.version, updatedAt: appData.updatedAt })
     }
 
-    // ---------- Beacon 同步（页面卸载时的数据保底推送）----------
+    // ---------- Beacon 同步 ----------
     if (action === 'sync-beacon') {
-      const url = new URL(req.url, 'http://localhost')
       const beaconToken = url.searchParams.get('token')
-      const username = beaconToken ? tokens.get(beaconToken) : null
-      if (!username) {
+      if (!beaconToken || beaconToken !== activeToken) {
         res.writeHead(204)
         return res.end()
       }
-      const existing = dataStore.get(username)
       const clientVersion = body.data?.version || 0
 
-      // 版本冲突检测：客户端版本落后于服务端时静默忽略，避免覆盖新数据
-      if (existing && clientVersion > 0 && clientVersion < existing.version) {
-        console.log(`[Beacon跳过] ${username} 客户端版本${clientVersion} < 服务端版本${existing.version}`)
+      if (clientVersion > 0 && clientVersion < appData.version) {
+        console.log('[Beacon跳过] 客户端版本落后')
         res.writeHead(204)
         return res.end()
       }
 
-      const syncData = {
+      appData = {
         settings: body.data.settings,
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
-        version: (existing?.version || 0) + 1,
+        version: (appData.version || 0) + 1,
       }
-      dataStore.set(username, syncData)
       saveToDiskDebounced()
-      console.log(`[Beacon同步] ${username}`)
+      console.log('[Beacon同步]')
       res.writeHead(204)
       return res.end()
     }
 
-    // ---------- 单独上传资源 ----------
+    // ---------- 上传资源 ----------
     if (action === 'upload-resource') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '登录已过期' }, 401)
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
 
       const { id, data } = body
       if (!id || !data) return json(res, { error: '缺少资源数据' }, 400)
       if (data.length > MAX_BODY_SIZE) return json(res, { error: '资源数据过大' }, 413)
 
-      resources.set(getResourceKey(username, id), data)
+      resources.set(id, data)
       saveToDiskDebounced()
 
-      console.log(`[资源上传] ${username} ${id} (${Math.round(data.length / 1024)}KB)`)
+      console.log(`[资源上传] ${id} (${Math.round(data.length / 1024)}KB)`)
       return json(res, { success: true, id })
     }
 
-    // ---------- 数据拉取（pull）----------
-    // 前端从服务器下载全部数据（设置、书签、分类 + 资源元数据）
+    // ---------- 数据拉取 ----------
     if (action === 'pull') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '登录已过期' }, 401)
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
 
-      const data = dataStore.get(username)
-      if (!data) return json(res, { data: null, message: '暂无数据' })
+      if (!appData.settings && appData.links.length === 0) {
+        return json(res, { data: null, message: '暂无数据' })
+      }
 
       const resourcesMeta = {}
       for (const [key, val] of resources.entries()) {
-        if (key.startsWith(username + ':')) {
-          const resId = key.substring(username.length + 1)
-          resourcesMeta[resId] = resHash(val)
-        }
+        resourcesMeta[key] = resHash(val)
       }
 
       const responseData = {
-        ...data,
+        ...appData,
         resourcesMeta: Object.keys(resourcesMeta).length > 0 ? resourcesMeta : undefined,
       }
 
-      console.log(`[数据拉取] ${username}`)
-      return json(res, { data: responseData, updatedAt: data.updatedAt, version: data.version })
+      return json(res, { data: responseData, updatedAt: appData.updatedAt, version: appData.version })
     }
 
-    // ---------- 按需拉取资源（pull-resources）----------
+    // ---------- 按需拉取资源 ----------
     if (action === 'pull-resources') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '登录已过期' }, 401)
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
 
       const ids = body.ids
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
@@ -485,139 +397,43 @@ const server = http.createServer(async (req, res) => {
 
       const result = {}
       for (const id of ids) {
-        const val = resources.get(getResourceKey(username, id))
+        const val = resources.get(id)
         if (val) result[id] = val
       }
 
       return json(res, { resources: result })
     }
 
-    // ---------- 用户登出 ----------
-    if (action === 'logout') {
-      const auth = req.headers.authorization || ''
-      const token = auth.replace('Bearer ', '')
-      if (token) tokens.delete(token)
-      saveToDiskDebounced()
-      return json(res, { success: true })
-    }
-
-    // ---------- 管理员功能 ----------
-    if (action === 'admin') {
-      const username = getTokenUser(req)
-      if (!username || !isAdmin(username)) {
-        return json(res, { error: '权限不足' }, 403)
-      }
-
-      const subAction = parts[1]
-
-      // 获取所有用户列表
-      if (subAction === 'users') {
-        const userList = Array.from(users.entries()).map(([name, data]) => ({
-          username: name,
-          role: data.role || 'user',
-          createdAt: data.createdAt,
-        }))
-        return json(res, { users: userList })
-      }
-
-      // 管理员手动添加用户
-      if (subAction === 'add-user') {
-        const { username: newUser, password: newPassword } = body
-        if (!newUser || newUser.length < 2 || newUser.length > 20)
-          return json(res, { error: '用户名需要2-20个字符' }, 400)
-        if (!newPassword || newPassword.length < 4)
-          return json(res, { error: '密码至少4个字符' }, 400)
-        if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(newUser))
-          return json(res, { error: '用户名只能包含字母、数字、下划线或中文' }, 400)
-        if (users.has(newUser))
-          return json(res, { error: '用户名已存在' }, 409)
-
-        const salt = randomHex(16)
-        const hash = hashPassword(newPassword, salt)
-        users.set(newUser, { hash, salt, createdAt: Date.now(), role: 'user' })
-        dataStore.set(newUser, {
-          settings: null, links: [], categories: [], accessRecords: [],
-          updatedAt: Date.now(), version: 1,
-        })
-        saveToDiskDebounced()
-
-        console.log(`[管理员添加用户] ${username} -> ${newUser}`)
-        return json(res, { success: true, username: newUser })
-      }
-
-      // 管理员删除用户（同时清理 token 和资源）
-      if (subAction === 'delete-user') {
-        const { username: targetUser } = body
-        if (!targetUser) return json(res, { error: '缺少用户名' }, 400)
-        if (targetUser === username) return json(res, { error: '不能删除自己' }, 400)
-        if (!users.has(targetUser)) return json(res, { error: '用户不存在' }, 404)
-
-        users.delete(targetUser)
-        dataStore.delete(targetUser)
-        for (const [token, uname] of tokens.entries()) {
-          if (uname === targetUser) tokens.delete(token)
-        }
-        for (const key of resources.keys()) {
-          if (key.startsWith(targetUser + ':')) resources.delete(key)
-        }
-        saveToDiskDebounced()
-
-        console.log(`[管理员删除用户] ${username} -> ${targetUser}`)
-        return json(res, { success: true })
-      }
-
-      // 切换注册功能开关
-      if (subAction === 'toggle-registration') {
-        registrationEnabled = !registrationEnabled
-        saveToDiskDebounced()
-        console.log(`[管理员] 注册功能: ${registrationEnabled ? '开启' : '关闭'}`)
-        return json(res, { success: true, registrationEnabled })
-      }
-
-      // 获取系统状态（注册开关、用户总数）
-      if (subAction === 'status') {
-        return json(res, {
-          registrationEnabled,
-          totalUsers: users.size,
-        })
-      }
-
-      return json(res, { error: '未知管理操作' }, 404)
-    }
-
     // ---------- 修改密码 ----------
     if (action === 'change-password') {
-      const username = getTokenUser(req)
-      if (!username) return json(res, { error: '登录已过期' }, 401)
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+      if (!credential) return json(res, { error: '未设置密码' }, 400)
       const { oldPassword, newPassword } = body
       if (!oldPassword || !newPassword) return json(res, { error: '请输入旧密码和新密码' }, 400)
       if (newPassword.length < 4) return json(res, { error: '新密码至少4个字符' }, 400)
-      const user = users.get(username)
-      if (!user) return json(res, { error: '用户不存在' }, 404)
-      const hash = hashPassword(oldPassword, user.salt)
-      if (hash !== user.hash) return json(res, { error: '旧密码错误' }, 401)
-      // 生成新的盐值和哈希
+      const hash = hashPassword(oldPassword, credential.salt)
+      if (hash !== credential.hash) return json(res, { error: '旧密码错误' }, 401)
       const newSalt = randomHex(16)
       const newHash = hashPassword(newPassword, newSalt)
-      users.set(username, { ...user, hash: newHash, salt: newSalt })
+      credential = { hash: newHash, salt: newSalt }
       saveToDiskDebounced()
-      console.log(`[改密] ${username}`)
+      console.log('[改密] 成功')
       return json(res, { success: true })
     }
 
+    console.log(`[未知] method=${req.method} path=${url.pathname} action=${action}`)
     return json(res, { error: '未知操作' }, 404)
   }
 
   return json(res, { error: 'Method not allowed' }, 405)
 })
 
-// ==================== 启动服务器 ====================
+// ==================== 启动 ====================
 
 const PORT = parseInt(process.env.PORT || '8888', 10)
 const HOST = process.env.HOST || '0.0.0.0'
 server.listen(PORT, HOST, () => {
   console.log(`NavHub 服务运行在 http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`)
   if (hasDist) console.log('静态文件服务: dist/ 目录')
-  console.log('API 端点: /api/register, /api/login, /api/sync, /api/pull')
-  console.log('第一个注册的用户自动成为管理员')
+  console.log('API: /api/status, /api/setup, /api/login, /api/sync, /api/pull')
 })

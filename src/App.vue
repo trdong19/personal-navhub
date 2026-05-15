@@ -34,7 +34,6 @@ const showBackTop = computed(() => scrollY.value > 400)
 const fabOpen = ref(false)
 const showAddCategoryModal = ref(false)
 const newCatName = ref('')
-const headerRef = ref<InstanceType<typeof AppHeader> | null>(null)
 const showUserMenu = ref(false)
 const userMenuRef = ref<HTMLElement | null>(null)
 const allExpanded = computed(() => navStore.categories.length > 0 && navStore.categories.every(c => !c.collapsed))
@@ -243,11 +242,6 @@ function handleUserMenuOutside(e: MouseEvent) {
   }
 }
 
-function openAdminPanel() {
-  showUserMenu.value = false
-  headerRef.value?.openAdminPanel()
-}
-
 onMounted(async () => {
   settingsStore.init()
 
@@ -273,13 +267,8 @@ onMounted(async () => {
   navStore.batchFetchFavicons()
 })
 
-/** 后台同步：验证登录 + 先推送本地修改 + 拉取服务端更新 */
+/** 后台同步：先推送本地修改 + 拉取服务端更新 */
 async function syncInBackground() {
-  const valid = await auth.checkSession()
-  if (!valid) {
-    auth.logout()
-    return
-  }
   // 先推送本地修改，防止 pull 覆盖用户刚改的数据
   await auth.flushPush()
   const serverVersion = await auth.checkServerVersion()
@@ -390,7 +379,6 @@ function toggleTools() {
   <div v-else class="app-container">
     <ToastContainer />
     <AppHeader
-      ref="headerRef"
       @open-settings="showSettings = true"
       @open-editor="openEditor()"
       @open-stats="showStats = true"
@@ -517,8 +505,7 @@ function toggleTools() {
               <div v-if="showUserMenu" class="user-dropdown" @click="showUserMenu = false">
                 <div class="user-dropdown-header">
                   <svg class="user-dropdown-avatar" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  <span class="user-dropdown-name">{{ auth.username }}</span>
-                  <span v-if="auth.isAdmin.value" class="user-dropdown-badge">管理员</span>
+                  <span class="user-dropdown-name">菜单</span>
                 </div>
                 <div class="menu-divider"></div>
                 <button class="menu-item" @click="showSettings = true">
@@ -528,10 +515,6 @@ function toggleTools() {
                 <button class="menu-item" @click="showStats = true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
                   访问统计
-                </button>
-                <button v-if="auth.isAdmin.value" class="menu-item" @click="openAdminPanel">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  管理面板
                 </button>
                 <div class="menu-divider"></div>
                 <button class="menu-item menu-item-danger" @click="auth.logout()">

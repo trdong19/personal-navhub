@@ -1113,18 +1113,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
         </div>
 
         <div v-show="activeTab === 'account'" class="settings-section">
-          <h4>账户信息</h4>
-          <div class="account-info">
-            <div class="account-row">
-              <span class="account-label">用户名</span>
-              <span class="account-value">{{ auth.username }}</span>
-            </div>
-            <div class="account-row">
-              <span class="account-label">身份</span>
-              <span class="account-value">{{ auth.isAdmin ? '管理员' : '普通用户' }}</span>
-            </div>
-          </div>
-
           <h4>修改密码</h4>
           <button v-if="!showPasswordForm" class="btn btn-secondary" @click="showPasswordForm = true">
             🔑 修改密码
