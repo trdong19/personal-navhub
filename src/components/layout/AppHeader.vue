@@ -139,8 +139,6 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 <template>
   <header class="header">
     <div class="header-inner">
-      <div class="header-left"></div>
-
       <div class="header-right">
         <Transition name="fade">
           <button v-if="hasMovedLinks" class="undo-btn move-undo-btn" title="撤回移动" @click="handleUndoMove">

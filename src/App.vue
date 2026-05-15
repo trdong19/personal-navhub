@@ -759,15 +759,6 @@ function toggleTools() {
   color: var(--text);
 }
 
-.user-dropdown-badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--primary);
-  color: white;
-  font-weight: 500;
-}
-
 @keyframes userDropIn {
   from {
     opacity: 0;

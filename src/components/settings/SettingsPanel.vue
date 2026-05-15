@@ -1949,33 +1949,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   justify-content: center;
 }
 
-.account-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  background: var(--bg);
-  border-radius: 10px;
-  border: 1px solid var(--border);
-}
-
-.account-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.account-label {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.account-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-
 .form-error {
   font-size: 12px;
   color: #ef4444;
@@ -2378,12 +2351,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .bi-actions .btn-primary:hover {
   opacity: 0.9;
-}
-
-.btn-sm {
-  padding: 7px 14px;
-  font-size: 12px;
-  align-self: flex-start;
 }
 
 .reset-overlay {

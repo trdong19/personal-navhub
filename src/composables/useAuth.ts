@@ -44,7 +44,6 @@ const authMessage = ref('')
 const isLoggedIn = ref(!!token.value)
 const authReady = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let hasLocalChanges = false
 let lastPushHash = ''
 let isPushing = false
 let pendingPush = false
@@ -413,7 +412,6 @@ export function useAuth() {
 
   function debouncePush() {
     if (!token.value) return
-    hasLocalChanges = true
     const v = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
     localStorage.setItem(CACHED_VERSION_KEY, String(v + 1))
     if (debounceTimer) clearTimeout(debounceTimer)
