@@ -12,8 +12,8 @@ export function useCardEntrance(containerRef: Ref<HTMLElement | null>, selector 
     const allCards = el.querySelectorAll(selector)
     if (!allCards.length) return
 
-    const cards = Array.from(allCards).filter(c => !(c as HTMLElement).classList.contains('no-url'))
-    const noUrlCards = Array.from(allCards).filter(c => (c as HTMLElement).classList.contains('no-url'))
+    const cards = Array.from(allCards, c => c as HTMLElement).filter(c => !c.classList.contains('no-url'))
+    const noUrlCards = Array.from(allCards, c => c as HTMLElement).filter(c => c.classList.contains('no-url'))
 
     if (cards.length) {
       waapi.animate(cards, {
