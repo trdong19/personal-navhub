@@ -272,7 +272,6 @@ export const useNavStore = defineStore('nav', () => {
     if (toUnpin.length === 0) return 0
     for (const link of toUnpin) {
       link.pinned = false
-      link.pinnedOrder = undefined
     }
     exitSelectionMode()
     saveLinks()
