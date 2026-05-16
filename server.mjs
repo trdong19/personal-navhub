@@ -244,6 +244,51 @@ const server = http.createServer(async (req, res) => {
       return json(res, { data })
     }
 
+    // 代理获取网站图标
+    if (action === 'favicon') {
+      if (!isValidToken(req)) return json(res, { error: '未登录' }, 401)
+      const targetUrl = url.searchParams.get('url')
+      if (!targetUrl) return json(res, { error: '缺少 url 参数' }, 400)
+      try {
+        const { hostname, protocol } = new URL(targetUrl)
+        if (!hostname) return json(res, { icon: '' })
+
+        const isPrivate = ['localhost', '127.0.0.1', '::1'].includes(hostname)
+          || hostname.endsWith('.local')
+          || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+
+        const candidates = [
+          `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${protocol}//${hostname}&size=64`,
+          ...(isPrivate ? [] : [
+            `${protocol}//${hostname}/favicon.ico`,
+            `${protocol}//${hostname}/favicon.png`,
+            `${protocol}//${hostname}/favicon.svg`,
+            `${protocol}//${hostname}/apple-touch-icon.png`,
+          ]),
+          `https://icons.duckduckgo.com/ip3/${hostname}.ico`,
+        ]
+
+        for (const iconUrl of candidates) {
+          try {
+            const resp = await fetch(iconUrl, {
+              signal: AbortSignal.timeout(5000),
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NavHub/1.0)' },
+            })
+            if (!resp.ok) continue
+            const buf = Buffer.from(await resp.arrayBuffer())
+            if (buf.length === 0 || buf.length > 100 * 1024) continue
+            const ct = resp.headers.get('content-type') || ''
+            const mime = ct.includes('svg') ? 'image/svg+xml' : ct.includes('png') ? 'image/png' : ct.includes('gif') ? 'image/gif' : 'image/x-icon'
+            const base64 = `data:${mime};base64,${buf.toString('base64')}`
+            return json(res, { icon: base64 })
+          } catch {}
+        }
+        return json(res, { icon: '' })
+      } catch {
+        return json(res, { icon: '' })
+      }
+    }
+
     return json(res, { error: 'Not found' }, 404)
   }
 

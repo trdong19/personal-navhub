@@ -59,7 +59,7 @@ export const useNavStore = defineStore('nav', () => {
   const tagFilter = ref<string[]>([])
 
   /** 获取防抖同步推送函数 */
-  const { flushPush, addLink: apiAddLink, updateLink: apiUpdateLink, deleteLink: apiDeleteLink, addCategory: apiAddCategory, updateCategory: apiUpdateCategory, deleteCategory: apiDeleteCategory } = useAuth()
+  const { flushPush, token, addLink: apiAddLink, updateLink: apiUpdateLink, deleteLink: apiDeleteLink, addCategory: apiAddCategory, updateCategory: apiUpdateCategory, deleteCategory: apiDeleteCategory } = useAuth()
 
   const allTags = computed(() => {
     const tagSet = new Set<string>()
@@ -676,8 +676,31 @@ export const useNavStore = defineStore('nav', () => {
     if (link.cachedIconData || link.iconUrl) return
     const url = link.urls.extranet || link.urls.intranet
     if (!url) return
+
+    // 优先：服务端代理（无 CORS/GFW 限制）
+    if (token.value) {
+      try {
+        const res = await fetch(`/api/favicon?url=${encodeURIComponent(url)}`, {
+          headers: { 'Authorization': `Bearer ${token.value}` },
+          signal: AbortSignal.timeout(10000),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.icon && data.icon.startsWith('data:')) {
+            const idx = links.value.findIndex(l => l.id === link.id)
+            if (idx !== -1) {
+              links.value[idx].cachedIconData = data.icon
+              links.value[idx].faviconFetchFailed = false
+              saveLinks()
+            }
+            return
+          }
+        }
+      } catch {}
+    }
+
+    // 兜底：本地多路径尝试
     const candidates = getAllFaviconFormats(url)
-    if (candidates.length === 0) return
     for (const faviconUrl of candidates) {
       try {
         const resp = await fetch(faviconUrl, { signal: AbortSignal.timeout(2000) })

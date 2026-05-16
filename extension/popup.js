@@ -151,11 +151,21 @@ async function handleSaveLink() {
     const config = await storage.get(['serverUrl', 'authToken'])
     const { serverUrl, authToken } = config
 
-    // 获取 favicon（优先本地下载转 base64，服务器无需访问内网）
+    // 获取 favicon（服务端代理，无 CORS/GFW 限制）
     let iconUrl = ''
     try {
-      iconUrl = await fetchFaviconAsBase64(url)
+      const iconRes = await fetch(`${serverUrl}/api/favicon?url=${encodeURIComponent(url)}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      })
+      if (iconRes.ok) {
+        const iconData = await iconRes.json()
+        if (iconData.icon) iconUrl = iconData.icon
+      }
     } catch (e) {}
+    // 兜底：本地尝试
+    if (!iconUrl) {
+      try { iconUrl = await fetchFaviconAsBase64(url) } catch (e) {}
+    }
 
     const newLink = {
       id: generateId(),
