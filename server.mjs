@@ -365,6 +365,12 @@ const server = http.createServer(async (req, res) => {
       return json(res, { success: true, id })
     }
 
+    // ---------- 仅拉取分类（轻量接口） ----------
+    if (action === 'categories') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+      return json(res, { categories: appData.categories || [] })
+    }
+
     // ---------- 数据拉取 ----------
     if (action === 'pull') {
       if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)

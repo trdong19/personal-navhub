@@ -80,7 +80,7 @@ async function handleSaveSetup() {
   btn.textContent = '验证中...'
 
   try {
-    const res = await fetch(`${url}/api/pull`, {
+    const res = await fetch(`${url}/api/categories`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,9 +117,9 @@ async function showCollect(serverUrl, authToken) {
     // fallback
   }
 
-  // 拉取分类
+  // 拉取分类（轻量接口）
   try {
-    const res = await fetch(`${serverUrl}/api/pull`, {
+    const res = await fetch(`${serverUrl}/api/categories`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -128,7 +128,7 @@ async function showCollect(serverUrl, authToken) {
     })
     if (!res.ok) throw new Error('拉取失败')
     const json = await res.json()
-    const categories = json.data?.categories || []
+    const categories = json.categories || []
 
     const select = $('link-category')
     select.innerHTML = ''

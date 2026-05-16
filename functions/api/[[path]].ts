@@ -229,6 +229,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return json({ success: true, id })
     }
 
+    // ---------- 仅拉取分类（轻量接口） ----------
+    if (action === 'categories') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) return json({ categories: [] })
+
+      const data: SyncData = JSON.parse(raw)
+      return json({ categories: data.categories || [] })
+    }
+
     // ---------- 数据拉取 ----------
     if (action === 'pull') {
       const token = getToken(context.request)
