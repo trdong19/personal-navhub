@@ -241,6 +241,36 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return json({ categories: data.categories || [] })
     }
 
+    // ---------- 添加单条链接（轻量接口） ----------
+    if (action === 'add-link') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { link: Record<string, unknown> }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const link = body.link
+      if (!link || !link.title || !(link.urls as Record<string, unknown>)?.extranet) {
+        return json({ error: '缺少链接数据' }, 400)
+      }
+
+      const raw = await env.NAV_KV.get('data:main')
+      const data: SyncData = raw ? JSON.parse(raw) : { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0 }
+
+      // 检查重复
+      const dup = data.links.find(
+        (l: any) => l.urls?.extranet === (link.urls as any).extranet || l.urls?.intranet === (link.urls as any).extranet
+      )
+      if (dup) return json({ error: '该链接已存在' }, 409)
+
+      data.links.push(link as unknown as never)
+      data.updatedAt = Date.now()
+      data.version = (data.version || 0) + 1
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+
+      return json({ success: true, version: data.version })
+    }
+
     // ---------- 数据拉取 ----------
     if (action === 'pull') {
       const token = getToken(context.request)

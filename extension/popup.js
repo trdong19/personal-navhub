@@ -1,11 +1,5 @@
 /**
  * NavHub 收藏助手 - 核心逻辑
- *
- * 流程：
- * 1. 检查是否已配置服务器地址和 token
- * 2. 未配置 → 尝试从当前页面自动获取 token
- * 3. 已配置 → 获取当前标签页信息，拉取分类列表
- * 4. 用户填写后 → 拉取全量数据，插入新链接，推送回去
  */
 
 const $ = (id) => document.getElementById(id)
@@ -24,7 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   $('save-setup').addEventListener('click', handleSaveSetup)
-  $('open-settings').addEventListener('click', showSetup)
+  $('open-settings').addEventListener('click', () => showSetup())
   $('save-link').addEventListener('click', handleSaveLink)
 })
 
@@ -36,24 +30,16 @@ async function autoDetect() {
     if (!tab?.url) return
 
     const url = new URL(tab.url)
-    const origin = `${url.protocol}//${url.host}`
+    $('server-url').value = `${url.protocol}//${url.host}`
 
-    // 自动填入当前站点地址
-    $('server-url').value = origin
-
-    // 尝试从页面获取 token
     try {
       const res = await chrome.tabs.sendMessage(tab.id, { action: 'getToken' })
       if (res?.token) {
         $('auth-token').value = res.token
         showStatus('已自动获取 Token', 'success')
       }
-    } catch (e) {
-      // 页面没有注入 content script（如 chrome:// 页面）
-    }
-  } catch (e) {
-    // 无法访问当前标签页
-  }
+    } catch (e) {}
+  } catch (e) {}
 }
 
 // ==================== 设置面板 ====================
@@ -74,7 +60,6 @@ async function handleSaveSetup() {
   if (!url) { showStatus('请输入服务器地址', 'error'); return }
   if (!token) { showStatus('请输入 Token', 'error'); return }
 
-  // 验证连接
   const btn = $('save-setup')
   btn.disabled = true
   btn.textContent = '验证中...'
@@ -113,11 +98,9 @@ async function showCollect(serverUrl, authToken) {
       $('link-title').value = tab.title || ''
       $('link-url').value = tab.url || ''
     }
-  } catch (e) {
-    // fallback
-  }
+  } catch (e) {}
 
-  // 拉取分类（轻量接口）
+  // 拉取分类
   try {
     const res = await fetch(`${serverUrl}/api/categories`, {
       method: 'POST',
@@ -168,35 +151,7 @@ async function handleSaveLink() {
     const config = await storage.get(['serverUrl', 'authToken'])
     const { serverUrl, authToken } = config
 
-    // 拉取当前数据
-    const pullRes = await fetch(`${serverUrl}/api/pull`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
-    })
-    if (!pullRes.ok) throw new Error('拉取数据失败')
-    const pullData = await pullRes.json()
-
-    const existingLinks = pullData.data?.links || []
-    const existingCategories = pullData.data?.categories || []
-    const settings = pullData.data?.settings || null
-    const accessRecords = pullData.data?.accessRecords || []
-    const version = pullData.version || 0
-
-    // 检查是否重复
-    const duplicate = existingLinks.find(
-      (l) => l.urls?.extranet === url || l.urls?.intranet === url
-    )
-    if (duplicate) {
-      showStatus('该链接已存在', 'error')
-      btn.disabled = false
-      btn.textContent = '收藏'
-      return
-    }
-
-    // 生成新链接
+    // 生成 favicon URL
     let iconUrl = ''
     try {
       const { hostname, protocol } = new URL(url)
@@ -215,63 +170,33 @@ async function handleSaveLink() {
       urls: { extranet: url },
       tags: tagsStr ? tagsStr.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : [],
       pinned,
-      pinnedOrder: pinned ? existingLinks.filter((l) => l.pinned).length + 1 : 0,
-      order: existingLinks.filter((l) => l.category === categoryId).length,
+      pinnedOrder: pinned ? 1 : 0,
+      order: 0,
       accessCount: 0,
       lastAccessed: 0,
       createdAt: Date.now(),
     }
 
-    // 推送（支持 409 冲突重试）
-    let currentVersion = version
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const syncRes = await fetch(`${serverUrl}/api/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          data: {
-            settings,
-            links: [...existingLinks, newLink],
-            categories: existingCategories,
-            accessRecords,
-            updatedAt: Date.now(),
-            version: currentVersion,
-          },
-        }),
-      })
+    // 一次请求添加链接
+    const res = await fetch(`${serverUrl}/api/add-link`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ link: newLink }),
+    })
 
-      if (syncRes.ok) break
+    if (res.status === 409) {
+      const data = await res.json().catch(() => ({}))
+      showStatus(data.error || '该链接已存在', 'error')
+      btn.disabled = false
+      btn.textContent = '收藏'
+      return
+    }
 
-      if (syncRes.status === 409) {
-        // 版本冲突，重新拉取后重试
-        const rePull = await fetch(`${serverUrl}/api/pull`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`,
-          },
-        })
-        if (!rePull.ok) throw new Error('重新拉取数据失败')
-        const reData = await rePull.json()
-        existingLinks.length = 0
-        existingLinks.push(...(reData.data?.links || []))
-        existingCategories.length = 0
-        existingCategories.push(...(reData.data?.categories || []))
-        currentVersion = reData.version || 0
-        // 再次检查重复
-        if (existingLinks.find((l) => l.urls?.extranet === url || l.urls?.intranet === url)) {
-          showStatus('该链接已存在', 'error')
-          btn.disabled = false
-          btn.textContent = '收藏'
-          return
-        }
-        continue
-      }
-
-      const err = await syncRes.json().catch(() => ({}))
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
       throw new Error(err.error || '保存失败')
     }
 

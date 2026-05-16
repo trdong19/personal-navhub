@@ -371,6 +371,29 @@ const server = http.createServer(async (req, res) => {
       return json(res, { categories: appData.categories || [] })
     }
 
+    // ---------- 添加单条链接（轻量接口） ----------
+    if (action === 'add-link') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const link = body.link
+      if (!link || !link.title || !link.urls?.extranet) {
+        return json(res, { error: '缺少链接数据' }, 400)
+      }
+
+      // 检查重复
+      const dup = appData.links.find(
+        (l) => l.urls?.extranet === link.urls.extranet || l.urls?.intranet === link.urls.extranet
+      )
+      if (dup) return json(res, { error: '该链接已存在' }, 409)
+
+      appData.links.push(link)
+      appData.updatedAt = Date.now()
+      appData.version = (appData.version || 0) + 1
+      saveToDisk()
+
+      return json(res, { success: true, version: appData.version })
+    }
+
     // ---------- 数据拉取 ----------
     if (action === 'pull') {
       if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
