@@ -267,10 +267,8 @@ onMounted(async () => {
   navStore.batchFetchFavicons()
 })
 
-/** 后台同步：先推送本地修改 + 拉取服务端更新 */
+/** 后台同步：先拉取服务端更新 + 再推送本地修改 */
 async function syncInBackground() {
-  // 先推送本地修改，防止 pull 覆盖用户刚改的数据
-  await auth.flushPush()
   const serverVersion = await auth.checkServerVersion()
   const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
   if (serverVersion !== null && serverVersion > cachedVersion) {
@@ -280,6 +278,8 @@ async function syncInBackground() {
       navStore.reloadFromStorage()
     }
   }
+  // 拉取后再推送本地修改（push 内部有 hash 去重，无变化会跳过）
+  await auth.flushPush()
 }
 
 onUnmounted(() => {
@@ -310,20 +310,21 @@ function handleVisibilityChange() {
     auth.flushPush()
     auth.beaconPush()
   } else if (document.visibilityState === 'visible' && auth.token.value) {
-    // 页面重新可见时：先推送本地修改（flush 防抖定时器），再检查服务器更新
-    auth.flushPush().then(() => {
-      auth.checkServerVersion().then(serverVersion => {
-        if (serverVersion === null) return
-        const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
-        if (serverVersion > cachedVersion) {
-          auth.pull().then(ok => {
-            if (ok) {
-              settingsStore.reloadFromStorage()
-              navStore.reloadFromStorage()
-            }
-          })
-        }
-      })
+    // 页面重新可见时：先拉取服务器更新，再推送本地修改
+    auth.checkServerVersion().then(serverVersion => {
+      if (serverVersion === null) return
+      const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+      if (serverVersion > cachedVersion) {
+        auth.pull().then(ok => {
+          if (ok) {
+            settingsStore.reloadFromStorage()
+            navStore.reloadFromStorage()
+          }
+          auth.flushPush()
+        })
+      } else {
+        auth.flushPush()
+      }
     })
   }
 }
