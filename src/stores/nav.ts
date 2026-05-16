@@ -412,7 +412,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     links.value.push(newLink)
     saveLinks()
-    apiAddLink(newLink).catch(() => {})
+    apiAddLink(newLink as unknown as Record<string, unknown>).catch(() => {})
     fetchAndCacheFavicon(newLink)
     return newLink
   }
@@ -550,7 +550,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     categories.value.push(newCat)
     saveCategories()
-    apiAddCategory(newCat).catch(() => {})
+    apiAddCategory(newCat as unknown as Record<string, unknown>).catch(() => {})
     return newCat
   }
 
