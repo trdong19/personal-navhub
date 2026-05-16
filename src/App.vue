@@ -275,7 +275,8 @@ async function syncInBackground() {
   if (serverVersion !== null && serverVersion > cachedVersion) {
     const result = await auth.pullChanges()
     if (result && result.changes.length > 0) {
-      applyChanges(result.changes)
+      const resolved = await resolveResources(result.changes)
+      applyChanges(resolved)
     }
   }
 }
@@ -312,14 +313,51 @@ function handleVisibilityChange() {
       if (serverVersion === null) return
       const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
       if (serverVersion > cachedVersion) {
-        auth.pullChanges().then(result => {
+        auth.pullChanges().then(async result => {
           if (result && result.changes.length > 0) {
-            applyChanges(result.changes)
+            const resolved = await resolveResources(result.changes)
+            applyChanges(resolved)
           }
         })
       }
     })
   }
+}
+
+/** 解析变更中的 res:// 资源引用 */
+async function resolveResources(changes: Array<{ op: string; type: string; id: string; data: unknown }>) {
+  const resIds = new Set<string>()
+  for (const change of changes) {
+    if (change.type !== 'link' || !change.data) continue
+    const d = change.data as Record<string, unknown>
+    if (typeof d.iconUrl === 'string' && d.iconUrl.startsWith('res://')) resIds.add(d.iconUrl.replace('res://', ''))
+    if (typeof d.cachedIconData === 'string' && d.cachedIconData.startsWith('res://')) resIds.add(d.cachedIconData.replace('res://', ''))
+  }
+  if (resIds.size === 0) return changes
+
+  const apiBase = '/api'
+  const res = await fetch(`${apiBase}/pull-resources`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(auth.token.value ? { 'Authorization': `Bearer ${auth.token.value}` } : {}) },
+    body: JSON.stringify({ ids: [...resIds] }),
+  })
+  if (!res.ok) return changes
+  const data = await res.json()
+  const resources: Record<string, string> = data.resources || {}
+
+  for (const change of changes) {
+    if (change.type !== 'link' || !change.data) continue
+    const d = change.data as Record<string, unknown>
+    if (typeof d.iconUrl === 'string' && d.iconUrl.startsWith('res://')) {
+      const id = d.iconUrl.replace('res://', '')
+      d.iconUrl = resources[id] || ''
+    }
+    if (typeof d.cachedIconData === 'string' && d.cachedIconData.startsWith('res://')) {
+      const id = d.cachedIconData.replace('res://', '')
+      d.cachedIconData = resources[id] || ''
+    }
+  }
+  return changes
 }
 
 /** 应用增量变更到本地 store */
