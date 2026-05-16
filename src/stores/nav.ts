@@ -12,7 +12,7 @@ import { ref, computed } from 'vue'
 import type { NavLink, NavCategory, AccessRecord } from '@/types'
 import { storageGet, storageSet } from '@/utils/storage'
 import { defaultLinks, defaultCategories } from '@/utils/defaults'
-import { generateId, getAllFaviconFormats } from '@/utils/helpers'
+import { generateId } from '@/utils/helpers'
 import { useAuth } from '@/composables/useAuth'
 import { pinyinMatch } from '@/utils/pinyin'
 
@@ -673,62 +673,25 @@ export const useNavStore = defineStore('nav', () => {
   }
 
   async function fetchAndCacheFavicon(link: NavLink): Promise<void> {
-    if (link.cachedIconData || link.iconUrl) return
+    if (link.cachedIconData || link.iconUrl || link.faviconFetchFailed) return
     const url = link.urls.extranet || link.urls.intranet
-    if (!url) return
-
-    // 优先：服务端代理（无 CORS/GFW 限制）
-    if (token.value) {
-      try {
-        const res = await fetch(`/api/favicon?url=${encodeURIComponent(url)}`, {
-          headers: { 'Authorization': `Bearer ${token.value}` },
-          signal: AbortSignal.timeout(10000),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.icon && data.icon.startsWith('data:')) {
-            const idx = links.value.findIndex(l => l.id === link.id)
-            if (idx !== -1) {
-              links.value[idx].cachedIconData = data.icon
-              links.value[idx].faviconFetchFailed = false
-              saveLinks()
-            }
-            return
-          }
-        }
-      } catch {}
+    if (!url || !token.value) return
+    try {
+      const res = await fetch(`/api/favicon?url=${encodeURIComponent(url)}`, {
+        headers: { 'Authorization': `Bearer ${token.value}` },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!res.ok) { markFaviconFailed(link.id); return }
+      const data = await res.json()
+      if (!data.icon) { markFaviconFailed(link.id); return }
+      const idx = links.value.findIndex(l => l.id === link.id)
+      if (idx !== -1) {
+        links.value[idx].cachedIconData = data.icon
+        saveLinks()
+      }
+    } catch {
+      markFaviconFailed(link.id)
     }
-
-    // 兜底：本地多路径尝试
-    const candidates = getAllFaviconFormats(url)
-    for (const faviconUrl of candidates) {
-      try {
-        const resp = await fetch(faviconUrl, { signal: AbortSignal.timeout(2000) })
-        if (!resp.ok) continue
-        const blob = await resp.blob()
-        if (blob.size === 0 || blob.size > 100 * 1024) continue
-        const dataUrl = await blobToDataUrl(blob)
-        if (dataUrl && dataUrl.startsWith('data:')) {
-          const idx = links.value.findIndex(l => l.id === link.id)
-          if (idx !== -1) {
-            links.value[idx].cachedIconData = dataUrl
-            links.value[idx].faviconFetchFailed = false
-            saveLinks()
-          }
-          return
-        }
-      } catch {}
-    }
-    markFaviconFailed(link.id)
-  }
-
-  function blobToDataUrl(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
   }
 
   function markFaviconFailed(linkId: string) {

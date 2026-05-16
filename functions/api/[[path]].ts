@@ -624,27 +624,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         const { hostname, protocol } = new URL(targetUrl)
         if (!hostname) return json({ icon: '' })
 
-        const isPrivate = ['localhost', '127.0.0.1', '::1'].includes(hostname)
-          || hostname.endsWith('.local')
-          || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
-
         const candidates = [
           `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${protocol}//${hostname}&size=64`,
-          ...(isPrivate ? [] : [
-            `${protocol}//${hostname}/favicon.ico`,
-            `${protocol}//${hostname}/favicon.png`,
-            `${protocol}//${hostname}/favicon.svg`,
-            `${protocol}//${hostname}/apple-touch-icon.png`,
-          ]),
           `https://icons.duckduckgo.com/ip3/${hostname}.ico`,
         ]
 
         for (const iconUrl of candidates) {
           try {
-            const resp = await fetch(iconUrl, {
-              signal: AbortSignal.timeout(5000),
-              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NavHub/1.0)' },
-            })
+            const resp = await fetch(iconUrl, { signal: AbortSignal.timeout(5000) })
             if (!resp.ok) continue
             const buf = await resp.arrayBuffer()
             if (buf.byteLength === 0 || buf.byteLength > 100 * 1024) continue
