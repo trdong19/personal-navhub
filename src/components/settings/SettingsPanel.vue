@@ -209,6 +209,7 @@ const toolbarLabelMap: Record<ToolbarButtonId, string> = {
   filter: '筛选',
   backTop: '回到顶部',
   user: '用户菜单',
+  refreshIcons: '获取图标',
 }
 
 function handleToolbarDragStart(e: DragEvent, id: ToolbarButtonId) {
