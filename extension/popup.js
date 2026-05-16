@@ -151,14 +151,10 @@ async function handleSaveLink() {
     const config = await storage.get(['serverUrl', 'authToken'])
     const { serverUrl, authToken } = config
 
-    // 生成 favicon URL
+    // 获取 favicon（优先本地下载转 base64，服务器无需访问内网）
     let iconUrl = ''
     try {
-      const { hostname, protocol } = new URL(url)
-      const isLocal = ['localhost', '127.0.0.1', '::1'].includes(hostname) || hostname.endsWith('.local') || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
-      iconUrl = isLocal
-        ? `https://icons.duckduckgo.com/ip3/${hostname}.ico`
-        : `${protocol}//${hostname}/favicon.ico`
+      iconUrl = await fetchFaviconAsBase64(url)
     } catch (e) {}
 
     const newLink = {
@@ -208,6 +204,52 @@ async function handleSaveLink() {
     btn.disabled = false
     btn.textContent = '收藏'
   }
+}
+
+// ==================== 图标获取 ====================
+
+async function fetchFaviconAsBase64(pageUrl) {
+  const { hostname, protocol } = new URL(pageUrl)
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(hostname)
+    || hostname.endsWith('.local')
+    || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+
+  // 获取当前标签页的 favicon URL（Chrome 已缓存）
+  let favIconUrl = ''
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.favIconUrl && !tab.favIconUrl.startsWith('chrome://')) {
+      favIconUrl = tab.favIconUrl
+    }
+  } catch (e) {}
+
+  // 尝试下载转 base64：标签页图标 > 站点 favicon.ico
+  const urls = [favIconUrl, `${protocol}//${hostname}/favicon.ico`].filter(Boolean)
+  for (const iconUrl of urls) {
+    try {
+      const res = await fetch(iconUrl, { mode: 'no-cors' })
+      if (res.type === 'opaque') continue
+      if (!res.ok) continue
+      const blob = await res.blob()
+      if (blob.size === 0 || blob.size > 100 * 1024) continue
+      return await blobToDataUrl(blob)
+    } catch (e) {}
+  }
+
+  // 兜底：DuckDuckGo 图标（服务器可访问，内网地址也能返回默认图标）
+  if (!isLocal) {
+    return `${protocol}//${hostname}/favicon.ico`
+  }
+  return `https://icons.duckduckgo.com/ip3/${hostname}.ico`
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
 }
 
 // ==================== 工具函数 ====================

@@ -397,6 +397,18 @@ const server = http.createServer(async (req, res) => {
       )
       if (dup) return json(res, { error: '该链接已存在' }, 409)
 
+      // 提取 data URL 图标存为资源
+      if (link.iconUrl && typeof link.iconUrl === 'string' && link.iconUrl.startsWith('data:')) {
+        const resId = `icon_${link.id}`
+        resources.set(resId, link.iconUrl)
+        link.iconUrl = `res://${resId}`
+      }
+      if (link.cachedIconData && typeof link.cachedIconData === 'string' && link.cachedIconData.startsWith('data:')) {
+        const resId = `cachedicon_${link.id}`
+        resources.set(resId, link.cachedIconData)
+        link.cachedIconData = `res://${resId}`
+      }
+
       appData.links.push(link)
       logChange('add', 'link', link.id, link)
 

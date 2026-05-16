@@ -296,6 +296,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       )
       if (dup) return json({ error: '该链接已存在' }, 409)
 
+      // 提取 data URL 图标存为资源
+      const newRes: Record<string, string> = {}
+      if (link.iconUrl && typeof link.iconUrl === 'string' && (link.iconUrl as string).startsWith('data:')) {
+        const resId = `icon_${link.id}`
+        await env.NAV_KV.put(`res:${resId}`, link.iconUrl as string)
+        newRes[resId] = link.iconUrl as string
+        link.iconUrl = `res://${resId}`
+      }
+      if (link.cachedIconData && typeof link.cachedIconData === 'string' && (link.cachedIconData as string).startsWith('data:')) {
+        const resId = `cachedicon_${link.id}`
+        await env.NAV_KV.put(`res:${resId}`, link.cachedIconData as string)
+        newRes[resId] = link.cachedIconData as string
+        link.cachedIconData = `res://${resId}`
+      }
+      if (Object.keys(newRes).length > 0) {
+        const metaRaw = await env.NAV_KV.get('system:res_meta')
+        const meta: Record<string, string> = metaRaw ? JSON.parse(metaRaw) : {}
+        for (const [key, val] of Object.entries(newRes)) {
+          meta[key] = resHash(val)
+        }
+        await env.NAV_KV.put('system:res_meta', JSON.stringify(meta))
+      }
+
       data.links.push(link as unknown as never)
       logChange(data, 'add', 'link', link.id as string, link)
       await env.NAV_KV.put('data:main', JSON.stringify(data))
