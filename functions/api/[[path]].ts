@@ -72,13 +72,9 @@ function resHash(data: string): string {
 }
 
 async function getResourcesMeta(env: Env): Promise<Record<string, string> | undefined> {
-  const list = await env.NAV_KV.list({ prefix: 'res:' })
-  if (list.keys.length === 0) return undefined
-  const meta: Record<string, string> = {}
-  for (const key of list.keys) {
-    const val = await env.NAV_KV.get(key.name)
-    if (val) meta[key.name.replace('res:', '')] = resHash(val)
-  }
+  const raw = await env.NAV_KV.get('system:res_meta')
+  if (!raw) return undefined
+  const meta = JSON.parse(raw)
   return Object.keys(meta).length > 0 ? meta : undefined
 }
 
@@ -202,12 +198,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       if (body.data.resources && typeof body.data.resources === 'object') {
         const resources = body.data.resources as Record<string, string>
+        const metaRaw = await env.NAV_KV.get('system:res_meta')
+        const meta: Record<string, string> = metaRaw ? JSON.parse(metaRaw) : {}
         for (const [key, val] of Object.entries(resources)) {
           const existingRes = await env.NAV_KV.get(`res:${key}`)
           if (existingRes !== val) {
             await env.NAV_KV.put(`res:${key}`, val)
           }
+          meta[key] = resHash(val)
         }
+        await env.NAV_KV.put('system:res_meta', JSON.stringify(meta))
       }
 
       return json({ success: true, version: syncData.version, updatedAt: syncData.updatedAt })
@@ -225,6 +225,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (!id || !data) return json({ error: '缺少资源数据' }, 400)
 
       await env.NAV_KV.put(`res:${id}`, data)
+
+      const metaRaw = await env.NAV_KV.get('system:res_meta')
+      const meta: Record<string, string> = metaRaw ? JSON.parse(metaRaw) : {}
+      meta[id] = resHash(data)
+      await env.NAV_KV.put('system:res_meta', JSON.stringify(meta))
 
       return json({ success: true, id })
     }
