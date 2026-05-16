@@ -4,7 +4,7 @@ import type { NavLink } from '@/types'
 import { useNetworkStore } from '@/stores/network'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
-import { getFaviconCandidates } from '@/utils/helpers'
+
 import { useTouchDrag } from '@/composables/useTouchDrag'
 import { useToast } from '@/composables/useToast'
 
@@ -68,45 +68,28 @@ const hasCurrentNetworkUrl = computed(() => {
   return !!urls.extranet
 })
 
-const faviconCandidates = computed(() => {
-  if (props.link.iconUrl) return [props.link.iconUrl]
-  if (props.link.faviconFetchFailed) return []
-  return getFaviconCandidates(currentUrl.value)
-})
-
-const faviconIndex = ref(0)
 const faviconSrc = computed(() => {
   if (props.link.cachedIconData) return props.link.cachedIconData
-  return faviconCandidates.value[faviconIndex.value] || ''
+  if (props.link.iconUrl) return props.link.iconUrl
+  return ''
 })
 const faviconFailed = ref(false)
-
-watch(faviconCandidates, () => {
-  faviconIndex.value = 0
-  faviconFailed.value = false
-})
 
 function onFaviconLoad() {
   faviconFailed.value = false
 }
 
 function onFaviconError() {
-  const nextIndex = faviconIndex.value + 1
-  if (nextIndex < faviconCandidates.value.length) {
-    faviconIndex.value = nextIndex
-  } else {
-    faviconFailed.value = true
-    if (!props.link.cachedIconData && !props.link.iconUrl) {
-      navStore.updateLink(props.link.id, { faviconFetchFailed: true })
-    }
+  faviconFailed.value = true
+  if (!props.link.cachedIconData && !props.link.iconUrl && !props.link.faviconFetchFailed) {
+    navStore.updateLink(props.link.id, { faviconFetchFailed: true })
   }
 }
 
 const showPlaceholder = computed(() => {
   if (props.link.cachedIconData) return false
   if (props.link.iconUrl) return faviconFailed.value
-  if (!faviconSrc.value) return true
-  return faviconFailed.value
+  return true
 })
 
 const letterIcon = computed(() => {

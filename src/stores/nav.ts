@@ -47,6 +47,8 @@ export const useNavStore = defineStore('nav', () => {
   const links = ref<NavLink[]>(ensurePinnedOrder(storageGet('navLinks', defaultLinks)))
   /** 所有分类列表 */
   const categories = ref<NavCategory[]>(storageGet('navCategories', defaultCategories))
+  /** 图标获取中标志，防止并发执行 */
+  let isFetchingFavicons = false
   /** 访问记录（最近 1000 条） */
   const accessRecords = ref<AccessRecord[]>(storageGet('accessRecords', []))
   /** 当前搜索关键词 */
@@ -715,16 +717,24 @@ export const useNavStore = defineStore('nav', () => {
   }
 
   async function batchFetchFavicons(): Promise<void> {
-    const targets = links.value.filter(l => !l.cachedIconData && !l.iconUrl && !l.faviconFetchFailed)
-    const BATCH_SIZE = 4
-    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
-      const batch = targets.slice(i, i + BATCH_SIZE)
-      await Promise.allSettled(batch.map(l => fetchAndCacheFavicon(l)))
+    if (isFetchingFavicons) return
+    isFetchingFavicons = true
+    try {
+      const targets = links.value.filter(l => !l.cachedIconData && !l.iconUrl && !l.faviconFetchFailed)
+      const BATCH_SIZE = 4
+      for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+        const batch = targets.slice(i, i + BATCH_SIZE)
+        await Promise.allSettled(batch.map(l => fetchAndCacheFavicon(l)))
+      }
+    } finally {
+      isFetchingFavicons = false
     }
   }
 
   async function refreshAllFavicons(): Promise<{ tried: number; succeeded: number }> {
-    // 收集所有没有图标的链接（包括之前失败的）
+    if (isFetchingFavicons) return { tried: 0, succeeded: 0 }
+    isFetchingFavicons = true
+    try {
     const targets: NavLink[] = []
     for (const link of links.value) {
       if (link.cachedIconData || link.iconUrl) continue
@@ -746,6 +756,9 @@ export const useNavStore = defineStore('nav', () => {
       }
     }
     return { tried: targets.length, succeeded }
+    } finally {
+      isFetchingFavicons = false
+    }
   }
 
   // ==================== 导出 ====================
