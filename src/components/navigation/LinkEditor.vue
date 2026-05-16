@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import type { NavLink } from '@/types'
-import { getFaviconUrl } from '@/utils/helpers'
+import { getFaviconUrl, getAllFaviconFormats } from '@/utils/helpers'
 import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
@@ -88,17 +88,22 @@ function handleIconLoad() {
   iconPreviewFailed.value = false
 }
 
-function handleAutoFavicon() {
+async function handleAutoFavicon() {
   const url = form.value.extranetUrl || form.value.intranetUrl || form.value.tunnelUrl
-  if (url) {
+  if (!url) return
+  const candidates = getAllFaviconFormats(url)
+  for (const iconUrl of candidates) {
     try {
-      const { hostname } = new URL(url)
-      if (hostname) {
-        form.value.iconUrl = `https://${hostname}/favicon.ico`
-        iconPreviewFailed.value = false
-      }
+      const resp = await fetch(iconUrl, { signal: AbortSignal.timeout(3000) })
+      if (!resp.ok) continue
+      const blob = await resp.blob()
+      if (blob.size === 0 || blob.size > 100 * 1024) continue
+      form.value.iconUrl = iconUrl
+      iconPreviewFailed.value = false
+      return
     } catch {}
   }
+  toast.error('未找到可用的图标')
 }
 
 onMounted(() => {

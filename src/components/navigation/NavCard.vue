@@ -88,25 +88,6 @@ watch(faviconCandidates, () => {
 
 function onFaviconLoad() {
   faviconFailed.value = false
-  if (!props.link.cachedIconData && !props.link.iconUrl && faviconSrc.value) {
-    cacheFaviconAsBase64()
-  }
-}
-
-async function cacheFaviconAsBase64() {
-  try {
-    const resp = await fetch(faviconSrc.value)
-    if (!resp.ok) return
-    const blob = await resp.blob()
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      if (dataUrl && dataUrl.startsWith('data:')) {
-        navStore.updateLink(props.link.id, { cachedIconData: dataUrl })
-      }
-    }
-    reader.readAsDataURL(blob)
-  } catch {}
 }
 
 function onFaviconError() {

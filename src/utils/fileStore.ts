@@ -136,31 +136,6 @@ export async function deleteFile(id: string): Promise<void> {
 
 // ==================== favicon 缓存快捷方法 ====================
 
-/**
- * 保存 favicon Blob 到 IndexedDB
- * ID 格式: 'favicon:' + URL
- * @param url - 网站 URL
- * @param blob - favicon 的 Blob 数据
- */
-export async function saveFaviconBlob(url: string, blob: Blob): Promise<void> {
-  const id = 'favicon:' + url
-  await saveFile({ id, name: url, type: blob.type || 'image/png', category: 'favicon-cache', blob })
-}
-
-/**
- * 获取 favicon 的 blob: URL（用于 <img> 标签显示）
- * @param url - 网站 URL
- * @returns blob: URL 字符串，或 null（不存在时）
- */
-export async function getFaviconBlob(url: string): Promise<string | null> {
-  const id = 'favicon:' + url
-  const file = await getFile(id)
-  if (file) {
-    return URL.createObjectURL(file.blob)
-  }
-  return null
-}
-
 // ==================== 工具函数 ====================
 
 /**

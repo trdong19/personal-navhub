@@ -12,7 +12,7 @@ import { ref, computed } from 'vue'
 import type { NavLink, NavCategory, AccessRecord } from '@/types'
 import { storageGet, storageSet } from '@/utils/storage'
 import { defaultLinks, defaultCategories } from '@/utils/defaults'
-import { generateId, getFaviconUrl } from '@/utils/helpers'
+import { generateId, getAllFaviconFormats } from '@/utils/helpers'
 import { useAuth } from '@/composables/useAuth'
 import { pinyinMatch } from '@/utils/pinyin'
 
@@ -671,33 +671,39 @@ export const useNavStore = defineStore('nav', () => {
   }
 
   async function fetchAndCacheFavicon(link: NavLink): Promise<void> {
-    if (link.cachedIconData || link.iconUrl || link.faviconFetchFailed) return
+    if (link.cachedIconData || link.iconUrl) return
     const url = link.urls.extranet || link.urls.intranet
     if (!url) return
-    const faviconUrl = getFaviconUrl(url)
-    if (!faviconUrl) return
-    try {
-      const resp = await fetch(faviconUrl, { signal: AbortSignal.timeout(2000) })
-      if (!resp.ok) {
-        markFaviconFailed(link.id)
-        return
-      }
-      const blob = await resp.blob()
-      const reader = new FileReader()
-      reader.onload = () => {
-        const dataUrl = reader.result as string
+    const candidates = getAllFaviconFormats(url)
+    if (candidates.length === 0) return
+    for (const faviconUrl of candidates) {
+      try {
+        const resp = await fetch(faviconUrl, { signal: AbortSignal.timeout(2000) })
+        if (!resp.ok) continue
+        const blob = await resp.blob()
+        if (blob.size === 0 || blob.size > 100 * 1024) continue
+        const dataUrl = await blobToDataUrl(blob)
         if (dataUrl && dataUrl.startsWith('data:')) {
           const idx = links.value.findIndex(l => l.id === link.id)
           if (idx !== -1) {
             links.value[idx].cachedIconData = dataUrl
+            links.value[idx].faviconFetchFailed = false
             saveLinks()
           }
+          return
         }
-      }
-      reader.readAsDataURL(blob)
-    } catch {
-      markFaviconFailed(link.id)
+      } catch {}
     }
+    markFaviconFailed(link.id)
+  }
+
+  function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
   }
 
   function markFaviconFailed(linkId: string) {
@@ -715,6 +721,20 @@ export const useNavStore = defineStore('nav', () => {
       const batch = targets.slice(i, i + BATCH_SIZE)
       await Promise.allSettled(batch.map(l => fetchAndCacheFavicon(l)))
     }
+  }
+
+  async function refetchFailedFavicons(): Promise<number> {
+    const failed = links.value.filter(l => l.faviconFetchFailed)
+    for (const link of failed) {
+      const idx = links.value.findIndex(l => l.id === link.id)
+      if (idx !== -1) links.value[idx].faviconFetchFailed = false
+    }
+    const BATCH_SIZE = 4
+    for (let i = 0; i < failed.length; i += BATCH_SIZE) {
+      const batch = failed.slice(i, i + BATCH_SIZE)
+      await Promise.allSettled(batch.map(l => fetchAndCacheFavicon(l)))
+    }
+    return failed.length
   }
 
   // ==================== 导出 ====================
@@ -755,6 +775,7 @@ export const useNavStore = defineStore('nav', () => {
     reloadFromStorage,
     fetchAndCacheFavicon,
     batchFetchFavicons,
+    refetchFailedFavicons,
     selectionMode,
     selectedLinkIds,
     enterSelectionMode,
