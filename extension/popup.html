@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NavHub 收藏</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- 设置面板 -->
+  <div id="setup-panel" class="panel hidden">
+    <div class="header">
+      <span class="logo">🔥</span>
+      <span class="title">连接 NavHub</span>
+    </div>
+    <div class="form-group">
+      <label>服务器地址</label>
+      <input id="server-url" type="url" placeholder="http://localhost:8888">
+    </div>
+    <div class="form-group">
+      <label>Token</label>
+      <input id="auth-token" type="password" placeholder="登录后复制 token">
+      <span class="hint">在 NavHub 登录后，从浏览器开发者工具 → Application → Local Storage 中复制 nav_auth_token 的值</span>
+    </div>
+    <button id="save-setup" class="btn btn-primary">保存连接</button>
+  </div>
+
+  <!-- 收藏面板 -->
+  <div id="collect-panel" class="panel hidden">
+    <div class="header">
+      <span class="logo">🔥</span>
+      <span class="title">收藏到 NavHub</span>
+      <button id="open-settings" class="btn-icon" title="设置">⚙️</button>
+    </div>
+    <div class="form-group">
+      <label>名称</label>
+      <input id="link-title" type="text" placeholder="网页标题">
+    </div>
+    <div class="form-group">
+      <label>地址</label>
+      <input id="link-url" type="url" placeholder="网页地址">
+    </div>
+    <div class="form-group">
+      <label>分类</label>
+      <select id="link-category">
+        <option value="" disabled>加载中...</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>标签（逗号分隔）</label>
+      <input id="link-tags" type="text" placeholder="可选，如：工具, 常用">
+    </div>
+    <div class="form-row">
+      <label class="checkbox-label">
+        <input id="link-pinned" type="checkbox"> 置顶
+      </label>
+    </div>
+    <button id="save-link" class="btn btn-primary">收藏</button>
+    <div id="status-msg" class="status hidden"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
