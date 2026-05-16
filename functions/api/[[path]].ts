@@ -72,8 +72,19 @@ function resHash(data: string): string {
 }
 
 async function getResourcesMeta(env: Env): Promise<Record<string, string> | undefined> {
-  const raw = await env.NAV_KV.get('system:res_meta')
-  if (!raw) return undefined
+  let raw = await env.NAV_KV.get('system:res_meta')
+  if (!raw) {
+    // 一次性迁移：从现有资源构建元数据
+    const list = await env.NAV_KV.list({ prefix: 'res:' })
+    if (list.keys.length === 0) return undefined
+    const meta: Record<string, string> = {}
+    for (const key of list.keys) {
+      const val = await env.NAV_KV.get(key.name)
+      if (val) meta[key.name.replace('res:', '')] = resHash(val)
+    }
+    await env.NAV_KV.put('system:res_meta', JSON.stringify(meta))
+    return Object.keys(meta).length > 0 ? meta : undefined
+  }
   const meta = JSON.parse(raw)
   return Object.keys(meta).length > 0 ? meta : undefined
 }
