@@ -453,17 +453,26 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /** 获取工具栏配置（确保旧用户有默认值） */
   function getToolbar(): ToolbarButtonConfig[] {
+    const defaults: ToolbarButtonConfig[] = [
+      { id: 'theme', visible: true },
+      { id: 'network', visible: true },
+      { id: 'filter', visible: true },
+      { id: 'add', visible: true },
+      { id: 'expand', visible: true },
+      { id: 'refreshIcons', visible: true },
+      { id: 'user', visible: true },
+      { id: 'backTop', visible: true },
+    ]
     if (!settings.value.layout.toolbar) {
-      settings.value.layout.toolbar = [
-        { id: 'theme', visible: true },
-        { id: 'network', visible: true },
-        { id: 'filter', visible: true },
-        { id: 'add', visible: true },
-        { id: 'expand', visible: true },
-        { id: 'refreshIcons', visible: true },
-        { id: 'user', visible: true },
-        { id: 'backTop', visible: true },
-      ]
+      settings.value.layout.toolbar = defaults
+    } else {
+      // 补齐新增的按钮
+      const existingIds = new Set(settings.value.layout.toolbar.map(b => b.id))
+      for (const btn of defaults) {
+        if (!existingIds.has(btn.id)) {
+          settings.value.layout.toolbar.push(btn)
+        }
+      }
     }
     return settings.value.layout.toolbar
   }
