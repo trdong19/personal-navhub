@@ -490,6 +490,51 @@ export function useAuth() {
     return true
   }
 
+  // ==================== 增量 CRUD ====================
+
+  async function crudRequest(action: string, body: Record<string, unknown>): Promise<{ success: boolean; version: number }> {
+    const res = await fetch(`${getApiBase()}/${action}`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(body),
+    })
+    if (res.status === 401) { clearAuth(); throw new Error('登录已过期') }
+    const data = await safeJson(res)
+    if (!res.ok) throw new Error(data.error || '操作失败')
+    // 更新本地缓存版本号
+    if (data.version) safeSetItem(CACHED_VERSION_KEY, String(data.version))
+    lastPushHash = ''
+    return data
+  }
+
+  function addLink(link: Record<string, unknown>) { return crudRequest('add-link', { link }) }
+  function updateLink(id: string, data: Record<string, unknown>) { return crudRequest('update-link', { id, data }) }
+  function deleteLink(id: string) { return crudRequest('delete-link', { id }) }
+  function addCategory(category: Record<string, unknown>) { return crudRequest('add-category', { category }) }
+  function updateCategory(id: string, data: Record<string, unknown>) { return crudRequest('update-category', { id, data }) }
+  function deleteCategory(id: string) { return crudRequest('delete-category', { id }) }
+
+  // ==================== 增量拉取 ====================
+
+  async function pullChanges(): Promise<{ version: number; changes: Array<{ op: string; type: string; id: string; data: unknown }> } | null> {
+    if (!token.value) return null
+    try {
+      const since = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
+      const res = await fetch(`${getApiBase()}/changes`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ since }),
+      })
+      if (res.status === 401) { clearAuth(); return null }
+      const data = await safeJson(res)
+      if (!res.ok) return null
+      if (data.version) safeSetItem(CACHED_VERSION_KEY, String(data.version))
+      return data
+    } catch {
+      return null
+    }
+  }
+
   return {
     token,
     isLoggedIn,
@@ -507,5 +552,12 @@ export function useAuth() {
     beaconPush,
     checkServerVersion,
     changePassword,
+    addLink,
+    updateLink,
+    deleteLink,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+    pullChanges,
   }
 }

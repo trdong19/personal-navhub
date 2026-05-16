@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useNavStore, type LinkFilter } from '@/stores/nav'
 import { useAuth } from '@/composables/useAuth'
+import { storageSet } from '@/utils/storage'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import PinnedSection from '@/components/navigation/PinnedSection.vue'
 import CategorySection from '@/components/navigation/CategorySection.vue'
@@ -267,19 +268,16 @@ onMounted(async () => {
   navStore.batchFetchFavicons()
 })
 
-/** 后台同步：先拉取服务端更新 + 再推送本地修改 */
+/** 后台同步：增量拉取服务端变更 */
 async function syncInBackground() {
   const serverVersion = await auth.checkServerVersion()
   const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
   if (serverVersion !== null && serverVersion > cachedVersion) {
-    const ok = await auth.pull()
-    if (ok) {
-      settingsStore.reloadFromStorage()
-      navStore.reloadFromStorage()
+    const result = await auth.pullChanges()
+    if (result && result.changes.length > 0) {
+      applyChanges(result.changes)
     }
   }
-  // 拉取后再推送本地修改（push 内部有 hash 去重，无变化会跳过）
-  await auth.flushPush()
 }
 
 onUnmounted(() => {
@@ -306,27 +304,58 @@ function handleTouchEndCleanup() {
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {
-    // 页面隐藏时：推送本地数据到服务器
-    auth.flushPush()
+    // 页面隐藏时：用 beacon 兜底推送
     auth.beaconPush()
   } else if (document.visibilityState === 'visible' && auth.token.value) {
-    // 页面重新可见时：先拉取服务器更新，再推送本地修改
+    // 页面重新可见时：增量拉取服务端变更
     auth.checkServerVersion().then(serverVersion => {
       if (serverVersion === null) return
       const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
       if (serverVersion > cachedVersion) {
-        auth.pull().then(ok => {
-          if (ok) {
-            settingsStore.reloadFromStorage()
-            navStore.reloadFromStorage()
+        auth.pullChanges().then(result => {
+          if (result && result.changes.length > 0) {
+            applyChanges(result.changes)
           }
-          auth.flushPush()
         })
-      } else {
-        auth.flushPush()
       }
     })
   }
+}
+
+/** 应用增量变更到本地 store */
+function applyChanges(changes: Array<{ op: string; type: string; id: string; data: unknown }>) {
+  for (const change of changes) {
+    if (change.type === 'link') {
+      if (change.op === 'add' && change.data) {
+        if (!navStore.links.find(l => l.id === change.id)) {
+          navStore.links.push(change.data as any)
+        }
+      } else if (change.op === 'update' && change.data) {
+        const idx = navStore.links.findIndex(l => l.id === change.id)
+        if (idx !== -1) {
+          navStore.links[idx] = { ...navStore.links[idx], ...(change.data as any) }
+        }
+      } else if (change.op === 'delete') {
+        navStore.links = navStore.links.filter(l => l.id !== change.id)
+      }
+    } else if (change.type === 'category') {
+      if (change.op === 'add' && change.data) {
+        if (!navStore.categories.find(c => c.id === change.id)) {
+          navStore.categories.push(change.data as any)
+        }
+      } else if (change.op === 'update' && change.data) {
+        const idx = navStore.categories.findIndex(c => c.id === change.id)
+        if (idx !== -1) {
+          navStore.categories[idx] = { ...navStore.categories[idx], ...(change.data as any) }
+        }
+      } else if (change.op === 'delete') {
+        navStore.categories = navStore.categories.filter(c => c.id !== change.id)
+        navStore.links = navStore.links.filter(l => l.category !== change.id)
+      }
+    }
+  }
+  storageSet('navLinks', navStore.links)
+  storageSet('navCategories', navStore.categories)
 }
 
 function handleBeforeUnload() {

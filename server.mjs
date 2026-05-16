@@ -39,7 +39,7 @@ let credential = null
 /** 单个活跃 token */
 let activeToken = null
 /** 应用数据 */
-let appData = { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0 }
+let appData = { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0, changeLog: [] }
 /** 资源存储 (背景图、favicon 等) */
 const resources = new Map()
 
@@ -71,7 +71,7 @@ function loadFromDisk() {
       // 新格式
       if (data.credential) credential = data.credential
       if (data.activeToken) activeToken = data.activeToken
-      if (data.appData) appData = data.appData
+      if (data.appData) { appData = data.appData; if (!appData.changeLog) appData.changeLog = [] }
       if (data.resources) for (const [k, v] of data.resources) resources.set(k, v)
     }
     console.log(`[持久化] 已加载: ${credential ? '已设密码' : '未设密码'}, ${resources.size}资源`)
@@ -158,6 +158,14 @@ function resHash(data) {
 }
 
 const MAX_BODY_SIZE = 50 * 1024 * 1024
+
+function logChange(op, type, id, data) {
+  appData.version = (appData.version || 0) + 1
+  appData.updatedAt = Date.now()
+  if (!appData.changeLog) appData.changeLog = []
+  appData.changeLog.push({ v: appData.version, op, type, id, data: data || null })
+  saveToDiskDebounced()
+}
 
 // ==================== 静态文件服务 ====================
 
@@ -302,6 +310,7 @@ const server = http.createServer(async (req, res) => {
         }, 409)
       }
 
+      const oldChangeLog = appData.changeLog || []
       appData = {
         settings: body.data.settings,
         links: body.data.links || [],
@@ -309,6 +318,7 @@ const server = http.createServer(async (req, res) => {
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
         version: (appData.version || 0) + 1,
+        changeLog: oldChangeLog,
       }
 
       if (body.data.resources) {
@@ -343,6 +353,7 @@ const server = http.createServer(async (req, res) => {
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
         version: (appData.version || 0) + 1,
+        changeLog: appData.changeLog || [],
       }
       saveToDiskDebounced()
       console.log('[Beacon同步]')
@@ -387,11 +398,107 @@ const server = http.createServer(async (req, res) => {
       if (dup) return json(res, { error: '该链接已存在' }, 409)
 
       appData.links.push(link)
-      appData.updatedAt = Date.now()
-      appData.version = (appData.version || 0) + 1
-      saveToDisk()
+      logChange('add', 'link', link.id, link)
 
       return json(res, { success: true, version: appData.version })
+    }
+
+    // ---------- 更新单条链接 ----------
+    if (action === 'update-link') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const { id, data: updateData } = body
+      if (!id || !updateData) return json(res, { error: '缺少参数' }, 400)
+
+      const idx = appData.links.findIndex((l) => l.id === id)
+      if (idx === -1) return json(res, { error: '链接不存在' }, 404)
+
+      appData.links[idx] = { ...appData.links[idx], ...updateData }
+      logChange('update', 'link', id, appData.links[idx])
+
+      return json(res, { success: true, version: appData.version })
+    }
+
+    // ---------- 删除单条链接 ----------
+    if (action === 'delete-link') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const { id } = body
+      if (!id) return json(res, { error: '缺少链接ID' }, 400)
+
+      const idx = appData.links.findIndex((l) => l.id === id)
+      if (idx === -1) return json(res, { error: '链接不存在' }, 404)
+
+      appData.links.splice(idx, 1)
+      logChange('delete', 'link', id, null)
+
+      return json(res, { success: true, version: appData.version })
+    }
+
+    // ---------- 添加分类 ----------
+    if (action === 'add-category') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const category = body.category
+      if (!category || !category.name) return json(res, { error: '缺少分类数据' }, 400)
+
+      appData.categories.push(category)
+      logChange('add', 'category', category.id, category)
+
+      return json(res, { success: true, version: appData.version })
+    }
+
+    // ---------- 更新分类 ----------
+    if (action === 'update-category') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const { id, data: updateData } = body
+      if (!id || !updateData) return json(res, { error: '缺少参数' }, 400)
+
+      const idx = appData.categories.findIndex((c) => c.id === id)
+      if (idx === -1) return json(res, { error: '分类不存在' }, 404)
+
+      appData.categories[idx] = { ...appData.categories[idx], ...updateData }
+      logChange('update', 'category', id, appData.categories[idx])
+
+      return json(res, { success: true, version: appData.version })
+    }
+
+    // ---------- 删除分类 ----------
+    if (action === 'delete-category') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const { id } = body
+      if (!id) return json(res, { error: '缺少分类ID' }, 400)
+
+      const idx = appData.categories.findIndex((c) => c.id === id)
+      if (idx === -1) return json(res, { error: '分类不存在' }, 404)
+
+      appData.categories.splice(idx, 1)
+      // 同时删除该分类下的链接
+      appData.links = appData.links.filter((l) => l.category !== id)
+      logChange('delete', 'category', id, null)
+
+      return json(res, { success: true, version: appData.version })
+    }
+
+    // ---------- 增量拉取变更 ----------
+    if (action === 'changes') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+
+      const since = body.since || 0
+      const changeLog = appData.changeLog || []
+
+      // 过滤 > since 的变更，按 type+id 去重（保留最新）
+      const filtered = changeLog.filter((c) => c.v > since)
+      const deduped = new Map()
+      for (const c of filtered) {
+        deduped.set(`${c.type}:${c.id}`, c)
+      }
+
+      const changes = [...deduped.values()].map(({ v, ...rest }) => rest)
+
+      return json(res, { version: appData.version, changes })
     }
 
     // ---------- 数据拉取 ----------

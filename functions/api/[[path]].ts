@@ -9,6 +9,15 @@ interface SyncData {
   accessRecords: unknown[]
   updatedAt: number
   version: number
+  changeLog?: ChangeEntry[]
+}
+
+interface ChangeEntry {
+  v: number
+  op: string
+  type: string
+  id: string
+  data: unknown
 }
 
 function corsHeaders(): Record<string, string> {
@@ -69,6 +78,13 @@ function resHash(data: string): string {
     h = ((h << 5) - h + data.charCodeAt(i)) | 0
   }
   return `${data.length}_${h}`
+}
+
+function logChange(data: SyncData, op: string, type: string, id: string, entityData: unknown): void {
+  data.version = (data.version || 0) + 1
+  data.updatedAt = Date.now()
+  if (!data.changeLog) data.changeLog = []
+  data.changeLog.push({ v: data.version, op, type, id, data: entityData })
 }
 
 async function getResourcesMeta(env: Env): Promise<Record<string, string> | undefined> {
@@ -203,6 +219,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         accessRecords: (body.data.accessRecords as unknown[]) || [],
         updatedAt: Date.now(),
         version,
+        changeLog: existingRaw ? (JSON.parse(existingRaw).changeLog || []) : [],
       }
 
       await env.NAV_KV.put('data:main', JSON.stringify(syncData))
@@ -280,11 +297,159 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (dup) return json({ error: '该链接已存在' }, 409)
 
       data.links.push(link as unknown as never)
-      data.updatedAt = Date.now()
-      data.version = (data.version || 0) + 1
+      logChange(data, 'add', 'link', link.id as string, link)
       await env.NAV_KV.put('data:main', JSON.stringify(data))
 
       return json({ success: true, version: data.version })
+    }
+
+    // ---------- 更新单条链接 ----------
+    if (action === 'update-link') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { id: string; data: Record<string, unknown> }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { id, data: updateData } = body
+      if (!id || !updateData) return json({ error: '缺少参数' }, 400)
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) return json({ error: '数据不存在' }, 404)
+      const data: SyncData = JSON.parse(raw)
+
+      const idx = data.links.findIndex((l: any) => l.id === id)
+      if (idx === -1) return json({ error: '链接不存在' }, 404)
+
+      data.links[idx] = { ...(data.links[idx] as any), ...updateData }
+      logChange(data, 'update', 'link', id, data.links[idx])
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+
+      return json({ success: true, version: data.version })
+    }
+
+    // ---------- 删除单条链接 ----------
+    if (action === 'delete-link') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { id: string }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { id } = body
+      if (!id) return json({ error: '缺少链接ID' }, 400)
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) return json({ error: '数据不存在' }, 404)
+      const data: SyncData = JSON.parse(raw)
+
+      const idx = data.links.findIndex((l: any) => l.id === id)
+      if (idx === -1) return json({ error: '链接不存在' }, 404)
+
+      data.links.splice(idx, 1)
+      logChange(data, 'delete', 'link', id, null)
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+
+      return json({ success: true, version: data.version })
+    }
+
+    // ---------- 添加分类 ----------
+    if (action === 'add-category') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { category: Record<string, unknown> }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const category = body.category
+      if (!category || !category.name) return json({ error: '缺少分类数据' }, 400)
+
+      const raw = await env.NAV_KV.get('data:main')
+      const data: SyncData = raw ? JSON.parse(raw) : { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0 }
+
+      data.categories.push(category as unknown as never)
+      logChange(data, 'add', 'category', category.id as string, category)
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+
+      return json({ success: true, version: data.version })
+    }
+
+    // ---------- 更新分类 ----------
+    if (action === 'update-category') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { id: string; data: Record<string, unknown> }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { id, data: updateData } = body
+      if (!id || !updateData) return json({ error: '缺少参数' }, 400)
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) return json({ error: '数据不存在' }, 404)
+      const data: SyncData = JSON.parse(raw)
+
+      const idx = data.categories.findIndex((c: any) => c.id === id)
+      if (idx === -1) return json({ error: '分类不存在' }, 404)
+
+      data.categories[idx] = { ...(data.categories[idx] as any), ...updateData }
+      logChange(data, 'update', 'category', id, data.categories[idx])
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+
+      return json({ success: true, version: data.version })
+    }
+
+    // ---------- 删除分类 ----------
+    if (action === 'delete-category') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { id: string }
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const { id } = body
+      if (!id) return json({ error: '缺少分类ID' }, 400)
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) return json({ error: '数据不存在' }, 404)
+      const data: SyncData = JSON.parse(raw)
+
+      const idx = data.categories.findIndex((c: any) => c.id === id)
+      if (idx === -1) return json({ error: '分类不存在' }, 404)
+
+      data.categories.splice(idx, 1)
+      data.links = data.links.filter((l: any) => l.category !== id)
+      logChange(data, 'delete', 'category', id, null)
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+
+      return json({ success: true, version: data.version })
+    }
+
+    // ---------- 增量拉取变更 ----------
+    if (action === 'changes') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: { since: number }
+      try { body = await context.request.json() } catch { body = { since: 0 } }
+
+      const raw = await env.NAV_KV.get('data:main')
+      if (!raw) return json({ version: 0, changes: [] })
+
+      const data: SyncData = JSON.parse(raw)
+      const since = body.since || 0
+      const changeLog = data.changeLog || []
+
+      // 过滤 > since 的变更，按 type+id 去重
+      const filtered = changeLog.filter((c) => c.v > since)
+      const deduped = new Map<string, ChangeEntry>()
+      for (const c of filtered) {
+        deduped.set(`${c.type}:${c.id}`, c)
+      }
+
+      const changes = [...deduped.values()].map(({ v, ...rest }) => rest)
+
+      return json({ version: data.version, changes })
     }
 
     // ---------- 数据拉取 ----------
@@ -379,6 +544,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         accessRecords: (body.data.accessRecords as unknown[]) || [],
         updatedAt: Date.now(),
         version,
+        changeLog: existingRaw ? (JSON.parse(existingRaw).changeLog || []) : [],
       }
 
       await env.NAV_KV.put('data:main', JSON.stringify(syncData))

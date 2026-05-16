@@ -57,7 +57,7 @@ export const useNavStore = defineStore('nav', () => {
   const tagFilter = ref<string[]>([])
 
   /** 获取防抖同步推送函数 */
-  const { flushPush } = useAuth()
+  const { flushPush, addLink: apiAddLink, updateLink: apiUpdateLink, deleteLink: apiDeleteLink, addCategory: apiAddCategory, updateCategory: apiUpdateCategory, deleteCategory: apiDeleteCategory } = useAuth()
 
   const allTags = computed(() => {
     const tagSet = new Set<string>()
@@ -375,13 +375,11 @@ export const useNavStore = defineStore('nav', () => {
   /** 保存书签到 localStorage 并触发同步 */
   function saveLinks() {
     storageSet('navLinks', links.value)
-    flushPush()
   }
 
-  /** 保存分类到 localStorage 并触发同步 */
+  /** 保存分类到 localStorage */
   function saveCategories() {
     storageSet('navCategories', categories.value)
-    flushPush()
   }
 
   // ==================== 书签操作 ====================
@@ -414,6 +412,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     links.value.push(newLink)
     saveLinks()
+    apiAddLink(newLink).catch(() => {})
     fetchAndCacheFavicon(newLink)
     return newLink
   }
@@ -437,6 +436,7 @@ export const useNavStore = defineStore('nav', () => {
       }
       links.value[idx] = { ...links.value[idx], ...data }
       saveLinks()
+      apiUpdateLink(id, data as Record<string, unknown>).catch(() => {})
     }
   }
 
@@ -451,6 +451,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     links.value = links.value.filter(l => l.id !== id)
     saveLinks()
+    apiDeleteLink(id).catch(() => {})
   }
 
   /**
@@ -549,6 +550,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     categories.value.push(newCat)
     saveCategories()
+    apiAddCategory(newCat).catch(() => {})
     return newCat
   }
 
@@ -567,6 +569,9 @@ export const useNavStore = defineStore('nav', () => {
     links.value = links.value.filter(l => !allIds.includes(l.category))
     saveCategories()
     saveLinks()
+    for (const cid of allIds) {
+      apiDeleteCategory(cid).catch(() => {})
+    }
   }
 
   /**
@@ -579,6 +584,7 @@ export const useNavStore = defineStore('nav', () => {
     if (idx !== -1) {
       categories.value[idx] = { ...categories.value[idx], ...data }
       saveCategories()
+      apiUpdateCategory(id, data as Record<string, unknown>).catch(() => {})
     }
   }
 
