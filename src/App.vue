@@ -446,11 +446,8 @@ async function handleRefreshIcons() {
   if (refreshingIcons.value) return
   refreshingIcons.value = true
   try {
-    // 重新获取之前失败的
-    const failedCount = await navStore.refetchFailedFavicons()
-    // 也获取从未尝试过的
-    await navStore.batchFetchFavicons()
-    toast.success(`图标刷新完成（重试 ${failedCount} 个）`)
+    const { tried, succeeded } = await navStore.refreshAllFavicons()
+    toast.success(`图标刷新完成（${succeeded}/${tried}）`)
   } catch {
     toast.error('图标刷新失败')
   } finally {

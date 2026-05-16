@@ -723,18 +723,29 @@ export const useNavStore = defineStore('nav', () => {
     }
   }
 
-  async function refetchFailedFavicons(): Promise<number> {
-    const failed = links.value.filter(l => l.faviconFetchFailed)
-    for (const link of failed) {
-      const idx = links.value.findIndex(l => l.id === link.id)
-      if (idx !== -1) links.value[idx].faviconFetchFailed = false
+  async function refreshAllFavicons(): Promise<{ tried: number; succeeded: number }> {
+    // 收集所有没有图标的链接（包括之前失败的）
+    const targets: NavLink[] = []
+    for (const link of links.value) {
+      if (link.cachedIconData || link.iconUrl) continue
+      if (link.faviconFetchFailed) {
+        const idx = links.value.findIndex(l => l.id === link.id)
+        if (idx !== -1) links.value[idx].faviconFetchFailed = false
+      }
+      targets.push(link)
     }
+    let succeeded = 0
     const BATCH_SIZE = 4
-    for (let i = 0; i < failed.length; i += BATCH_SIZE) {
-      const batch = failed.slice(i, i + BATCH_SIZE)
-      await Promise.allSettled(batch.map(l => fetchAndCacheFavicon(l)))
+    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+      const batch = targets.slice(i, i + BATCH_SIZE)
+      const results = await Promise.allSettled(batch.map(l => fetchAndCacheFavicon(l)))
+      // 检查是否成功获取
+      for (const link of batch) {
+        const idx = links.value.findIndex(l => l.id === link.id)
+        if (idx !== -1 && links.value[idx].cachedIconData) succeeded++
+      }
     }
-    return failed.length
+    return { tried: targets.length, succeeded }
   }
 
   // ==================== 导出 ====================
@@ -775,7 +786,7 @@ export const useNavStore = defineStore('nav', () => {
     reloadFromStorage,
     fetchAndCacheFavicon,
     batchFetchFavicons,
-    refetchFailedFavicons,
+    refreshAllFavicons,
     selectionMode,
     selectedLinkIds,
     enterSelectionMode,
