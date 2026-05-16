@@ -4,6 +4,7 @@ import type { NavLink } from '@/types'
 import { useNetworkStore } from '@/stores/network'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
+import { getFaviconUrl } from '@/utils/helpers'
 
 import { useTouchDrag } from '@/composables/useTouchDrag'
 import { useToast } from '@/composables/useToast'
@@ -71,7 +72,8 @@ const hasCurrentNetworkUrl = computed(() => {
 const faviconSrc = computed(() => {
   if (props.link.cachedIconData) return props.link.cachedIconData
   if (props.link.iconUrl) return props.link.iconUrl
-  return ''
+  if (props.link.faviconFetchFailed) return ''
+  return getFaviconUrl(currentUrl.value)
 })
 const faviconFailed = ref(false)
 
