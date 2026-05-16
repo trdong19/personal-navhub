@@ -440,6 +440,23 @@ function toggleTools() {
     filterPanelOpen.value = false
   }
 }
+
+const refreshingIcons = ref(false)
+async function handleRefreshIcons() {
+  if (refreshingIcons.value) return
+  refreshingIcons.value = true
+  try {
+    // 重新获取之前失败的
+    const failedCount = await navStore.refetchFailedFavicons()
+    // 也获取从未尝试过的
+    await navStore.batchFetchFavicons()
+    toast.success(`图标刷新完成（重试 ${failedCount} 个）`)
+  } catch {
+    toast.error('图标刷新失败')
+  } finally {
+    refreshingIcons.value = false
+  }
+}
 </script>
 
 <template>
@@ -563,6 +580,12 @@ function toggleTools() {
               <button class="float-btn" :title="allExpanded ? '一键收回所有分类' : '一键展开所有分类'" @click="toggleExpandCollapse">
                 <svg v-if="allExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 13-6-6-6 6"/><path d="m18 21-6-6-6 6"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 6 6 6-6"/><path d="m6 11 6 6 6-6"/></svg>
+              </button>
+            </div>
+
+            <div v-else-if="item.id === 'refreshIcons'" class="expand-collapse-group">
+              <button class="float-btn" :class="{ spinning: refreshingIcons }" title="一键获取所有图标" @click="handleRefreshIcons">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
               </button>
             </div>
 
@@ -778,6 +801,15 @@ function toggleTools() {
 .expand-collapse-group .float-btn {
   width: 32px;
   height: 32px;
+}
+
+.float-btn.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg) }
+  to { transform: rotate(360deg) }
 }
 
 .user-menu-fab {

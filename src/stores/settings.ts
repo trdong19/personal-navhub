@@ -460,6 +460,7 @@ export const useSettingsStore = defineStore('settings', () => {
         { id: 'filter', visible: true },
         { id: 'add', visible: true },
         { id: 'expand', visible: true },
+        { id: 'refreshIcons', visible: true },
         { id: 'user', visible: true },
         { id: 'backTop', visible: true },
       ]

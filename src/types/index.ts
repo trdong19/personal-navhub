@@ -16,7 +16,7 @@ export type ThemeMode = 'light' | 'dark' | 'auto'
 export type CardSize = 'tiny' | 'small' | 'medium' | 'large'
 
 /** 工具栏按钮 ID */
-export type ToolbarButtonId = 'theme' | 'network' | 'add' | 'expand' | 'filter' | 'backTop' | 'user'
+export type ToolbarButtonId = 'theme' | 'network' | 'add' | 'expand' | 'filter' | 'backTop' | 'user' | 'refreshIcons'
 
 // ==================== 书签相关 ====================
 
