@@ -245,6 +245,105 @@ function handleToolbarDragEnd() {
   toolbarDropTarget.value = null
 }
 
+// 工具栏触摸拖拽
+let touchTbDragging = false
+let touchTbDragId: string | null = null
+let touchTbClone: HTMLElement | null = null
+let touchTbDropTargetId: string | null = null
+let touchTbItemRect: DOMRect | null = null
+const toolbarListRef = ref<HTMLElement | null>(null)
+
+function handleToolbarTouchStart(e: TouchEvent, id: ToolbarButtonId) {
+  const handle = e.currentTarget as HTMLElement
+  const item = handle.closest('.toolbar-manage-item') as HTMLElement
+  if (!item) return
+  touchTbDragId = id
+  touchTbDragging = true
+  touchTbDropTargetId = null
+  touchTbItemRect = item.getBoundingClientRect()
+
+  touchTbClone = item.cloneNode(true) as HTMLElement
+  touchTbClone.style.cssText = `
+    position: fixed;
+    left: ${touchTbItemRect.left}px;
+    top: ${touchTbItemRect.top}px;
+    width: ${touchTbItemRect.width}px;
+    height: ${touchTbItemRect.height}px;
+    z-index: 9999;
+    opacity: 0.85;
+    transform: rotate(1deg) scale(1.03);
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+    border-radius: 10px;
+    pointer-events: none;
+    transition: none;
+    background: var(--bg);
+    border: 1px solid var(--primary);
+  `
+  document.body.appendChild(touchTbClone)
+  item.classList.add('toolbar-dragging')
+
+  if (navigator.vibrate) navigator.vibrate(30)
+
+  document.addEventListener('touchmove', handleTbDocTouchMove, { passive: false })
+  document.addEventListener('touchend', handleTbDocTouchEnd, { passive: true })
+  document.addEventListener('touchcancel', handleTbDocTouchEnd, { passive: true })
+}
+
+function handleTbDocTouchMove(e: TouchEvent) {
+  if (!touchTbDragging || !touchTbClone || !touchTbItemRect) return
+  e.preventDefault()
+
+  const touch = e.touches[0]
+  touchTbClone.style.left = touchTbItemRect.left + 'px'
+  touchTbClone.style.top = (touch.clientY - touchTbItemRect.height / 2) + 'px'
+
+  const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (elemBelow) {
+    const sortItem = elemBelow.closest<HTMLElement>('.toolbar-manage-item')
+    if (sortItem) {
+      const items = document.querySelectorAll('.toolbar-manage-item')
+      items.forEach((item, i) => {
+        const btns = settingsStore.getToolbar()
+        if (item === sortItem && btns[i] && btns[i].id !== touchTbDragId) {
+          touchTbDropTargetId = btns[i].id
+          toolbarDropTarget.value = btns[i].id
+        }
+      })
+    }
+  }
+}
+
+function handleTbDocTouchEnd() {
+  if (!touchTbDragging) return
+  touchTbDragging = false
+
+  if (touchTbDragId && touchTbDropTargetId && touchTbDragId !== touchTbDropTargetId) {
+    const toolbar = settingsStore.getToolbar()
+    const ids = toolbar.map(b => b.id)
+    const fromIdx = ids.indexOf(touchTbDragId)
+    const toIdx = ids.indexOf(touchTbDropTargetId)
+    if (fromIdx !== -1 && toIdx !== -1) {
+      ids.splice(fromIdx, 1)
+      ids.splice(toIdx, 0, touchTbDragId)
+      settingsStore.reorderToolbar(ids)
+    }
+  }
+
+  if (touchTbClone) { touchTbClone.remove(); touchTbClone = null }
+  touchTbItemRect = null
+  touchTbDragId = null
+  touchTbDropTargetId = null
+  toolbarDropTarget.value = null
+  toolbarDragId.value = null
+
+  document.querySelectorAll('.toolbar-manage-item.toolbar-dragging').forEach(el => {
+    el.classList.remove('toolbar-dragging')
+  })
+  document.removeEventListener('touchmove', handleTbDocTouchMove)
+  document.removeEventListener('touchend', handleTbDocTouchEnd)
+  document.removeEventListener('touchcancel', handleTbDocTouchEnd)
+}
+
 function moveToolbarItem(id: ToolbarButtonId, direction: -1 | 1) {
   const items = settingsStore.getToolbar()
   const idx = items.findIndex(b => b.id === id)
@@ -265,14 +364,14 @@ onMounted(() => {
 onUnmounted(() => {
   document.body.style.overflow = ''
   document.documentElement.style.overflow = ''
-  // 清理触摸拖拽事件
   document.removeEventListener('touchmove', handleCatDocTouchMove)
   document.removeEventListener('touchend', handleCatDocTouchEnd)
   document.removeEventListener('touchcancel', handleCatDocTouchEnd)
-  if (touchCatClone) {
-    touchCatClone.remove()
-    touchCatClone = null
-  }
+  if (touchCatClone) { touchCatClone.remove(); touchCatClone = null }
+  document.removeEventListener('touchmove', handleTbDocTouchMove)
+  document.removeEventListener('touchend', handleTbDocTouchEnd)
+  document.removeEventListener('touchcancel', handleTbDocTouchEnd)
+  if (touchTbClone) { touchTbClone.remove(); touchTbClone = null }
 })
 
 function handleFileManagerSelect(dataUrl: string) {
@@ -1039,6 +1138,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 class="toolbar-manage-handle"
                 draggable="true"
                 @dragstart="handleToolbarDragStart($event, btn.id)"
+                @touchstart="handleToolbarTouchStart($event, btn.id)"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
               </span>
@@ -2096,6 +2196,10 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   transition: all var(--transition);
   cursor: grab;
   user-select: none;
+}
+
+.toolbar-manage-item.toolbar-dragging {
+  opacity: 0.4;
 }
 
 .toolbar-manage-item.toolbar-hidden {
