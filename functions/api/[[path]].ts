@@ -600,6 +600,130 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return new Response(null, { status: 204, headers: corsHeaders() })
     }
 
+    // ---------- 增量同步 ----------
+    if (action === 'incremental') {
+      const token = getToken(context.request)
+      if (!token || !(await isValidToken(token, env))) return json({ error: '登录已过期' }, 401)
+
+      let body: Record<string, unknown>
+      try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
+
+      const raw = await env.NAV_KV.get('data:main')
+      const data: SyncData = raw ? JSON.parse(raw) : { settings: null, links: [], categories: [], accessRecords: [], updatedAt: Date.now(), version: 0, changeLog: [] }
+      const resMetaRaw = await env.NAV_KV.get('system:res_meta')
+      const resMeta: Record<string, string> = resMetaRaw ? JSON.parse(resMetaRaw) : {}
+      const { op, ...opData } = body
+
+      switch (op) {
+        case 'update-settings': {
+          data.settings = opData.settings
+          logChange(data, 'update', 'settings', 'main', opData.settings)
+          break
+        }
+        case 'batch-links': {
+          const { action: batchAction, ids, data: batchData } = opData as { action: string; ids: string[]; data?: any }
+          if (batchAction === 'pin') {
+            const orders = batchData?.pinnedOrders || []
+            for (const link of data.links as any[]) {
+              if (ids.includes(link.id)) {
+                link.pinned = true
+                const po = orders.find((o: any) => o.id === link.id)
+                if (po) link.pinnedOrder = po.pinnedOrder
+              }
+            }
+          } else if (batchAction === 'unpin') {
+            for (const link of data.links as any[]) {
+              if (ids.includes(link.id)) link.pinned = false
+            }
+          } else if (batchAction === 'delete') {
+            data.links = (data.links as any[]).filter((l: any) => !ids.includes(l.id))
+          } else if (batchAction === 'move' && batchData) {
+            for (const link of data.links as any[]) {
+              if (ids.includes(link.id)) {
+                link.category = batchData.categoryId
+                const lo = batchData.linkOrders?.find((o: any) => o.id === link.id)
+                if (lo) link.order = lo.order
+              }
+            }
+          }
+          logChange(data, 'batch-links', 'link', batchAction, { ids, data: batchData })
+          break
+        }
+        case 'reorder-links': {
+          const orders = (opData.orders || []) as Array<{id: string; order: number}>
+          for (const { id, order } of orders) {
+            const link = (data.links as any[]).find((l: any) => l.id === id)
+            if (link) link.order = order
+          }
+          logChange(data, 'reorder-links', 'link', 'reorder', orders)
+          break
+        }
+        case 'reorder-pinned': {
+          const orders = (opData.orders || []) as Array<{id: string; pinnedOrder: number}>
+          for (const { id, pinnedOrder } of orders) {
+            const link = (data.links as any[]).find((l: any) => l.id === id)
+            if (link) link.pinnedOrder = pinnedOrder
+          }
+          logChange(data, 'reorder-pinned', 'link', 'reorder-pinned', orders)
+          break
+        }
+        case 'reorder-categories': {
+          const orders = (opData.orders || []) as Array<{id: string; order: number}>
+          for (const { id, order } of orders) {
+            const cat = (data.categories as any[]).find((c: any) => c.id === id)
+            if (cat) cat.order = order
+          }
+          logChange(data, 'reorder-categories', 'category', 'reorder', orders)
+          break
+        }
+        case 'record-access': {
+          const link = (data.links as any[]).find((l: any) => l.id === opData.id)
+          if (link) {
+            link.accessCount = (link.accessCount || 0) + 1
+            link.lastAccessed = Date.now()
+          }
+          logChange(data, 'record-access', 'link', opData.id as string, link ? { accessCount: link.accessCount, lastAccessed: link.lastAccessed } : null)
+          break
+        }
+        case 'batch-categories': {
+          const { action: catAction, ids } = opData as { action: string; ids: string[] }
+          if (catAction === 'toggle') {
+            for (const cat of data.categories as any[]) {
+              if (ids.includes(cat.id)) cat.collapsed = !cat.collapsed
+            }
+          } else if (catAction === 'expand') {
+            for (const cat of data.categories as any[]) cat.collapsed = false
+          } else if (catAction === 'collapse') {
+            for (const cat of data.categories as any[]) cat.collapsed = true
+          }
+          logChange(data, 'batch-categories', 'category', catAction, ids)
+          break
+        }
+        case 'delete-resource': {
+          const resId = opData.resourceId as string
+          await env.NAV_KV.delete(`res:${resId}`)
+          delete resMeta[resId]
+          await env.NAV_KV.put('system:res_meta', JSON.stringify(resMeta))
+          logChange(data, 'delete-resource', 'resource', resId, null)
+          break
+        }
+        case 'import-data': {
+          data.settings = opData.settings
+          data.links = (opData.links as unknown[]) || []
+          data.categories = (opData.categories as unknown[]) || []
+          data.accessRecords = (opData.accessRecords as unknown[]) || []
+          logChange(data, 'import-data', 'sync', 'import', null)
+          logChange(data, 'fullSync', 'sync', 'full', null)
+          break
+        }
+        default:
+          return json({ error: `未知操作: ${op}` }, 400)
+      }
+
+      await env.NAV_KV.put('data:main', JSON.stringify(data))
+      return json({ success: true, version: data.version })
+    }
+
     return json({ error: '未知操作' }, 404)
   } catch (err: any) {
     return json({ error: `服务器内部错误: ${err.message || err}` }, 500)

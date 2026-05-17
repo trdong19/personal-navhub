@@ -313,10 +313,7 @@ function handleTouchEndCleanup() {
 }
 
 function handleVisibilityChange() {
-  if (document.visibilityState === 'hidden') {
-    // 页面隐藏时：用 beacon 兜底推送
-    auth.beaconPush()
-  } else if (document.visibilityState === 'visible' && auth.token.value) {
+  if (document.visibilityState === 'visible' && auth.token.value) {
     // 页面重新可见时：增量拉取服务端变更
     auth.checkServerVersion().then(serverVersion => {
       if (serverVersion === null) return
@@ -378,7 +375,83 @@ async function resolveResources(changes: Array<{ op: string; type: string; id: s
 /** 应用增量变更到本地 store */
 function applyChanges(changes: Array<{ op: string; type: string; id: string; data: unknown }>) {
   for (const change of changes) {
-    if (change.type === 'link') {
+    // 增量同步操作
+    if (change.op === 'batch-links' && change.data) {
+      const { ids, data: batchData } = change.data as { ids: string[]; data?: Record<string, unknown> }
+      if (change.id === 'pin') {
+        const orders = (batchData?.pinnedOrders as Array<{ id: string; pinnedOrder: number }>) || []
+        for (const link of navStore.links) {
+          if (ids.includes(link.id)) {
+            link.pinned = true
+            const po = orders.find(o => o.id === link.id)
+            if (po) link.pinnedOrder = po.pinnedOrder
+          }
+        }
+      } else if (change.id === 'unpin') {
+        for (const link of navStore.links) {
+          if (ids.includes(link.id)) link.pinned = false
+        }
+      } else if (change.id === 'delete') {
+        navStore.links = navStore.links.filter(l => !ids.includes(l.id))
+      } else if (change.id === 'move' && batchData) {
+        const moveCategoryId = batchData.categoryId as string
+        const linkOrders = (batchData.linkOrders as Array<{ id: string; order: number }>) || []
+        for (const link of navStore.links) {
+          if (ids.includes(link.id)) {
+            link.category = moveCategoryId
+            const lo = linkOrders.find(o => o.id === link.id)
+            if (lo) link.order = lo.order
+          }
+        }
+      }
+    } else if (change.op === 'reorder-links' && Array.isArray(change.data)) {
+      const orders = change.data as Array<{ id: string; order: number }>
+      for (const { id, order } of orders) {
+        const link = navStore.links.find(l => l.id === id)
+        if (link) link.order = order
+      }
+    } else if (change.op === 'reorder-pinned' && Array.isArray(change.data)) {
+      const orders = change.data as Array<{ id: string; pinnedOrder: number }>
+      for (const { id, pinnedOrder } of orders) {
+        const link = navStore.links.find(l => l.id === id)
+        if (link) link.pinnedOrder = pinnedOrder
+      }
+    } else if (change.op === 'record-access' && change.data) {
+      const d = change.data as { accessCount: number; lastAccessed: number }
+      const link = navStore.links.find(l => l.id === change.id)
+      if (link) {
+        link.accessCount = d.accessCount
+        link.lastAccessed = d.lastAccessed
+      }
+    } else if (change.op === 'batch-categories' && Array.isArray(change.data)) {
+      const ids = change.data as string[]
+      if (change.id === 'toggle') {
+        for (const cat of navStore.categories) {
+          if (ids.includes(cat.id)) cat.collapsed = !cat.collapsed
+        }
+      } else if (change.id === 'expand') {
+        for (const cat of navStore.categories) cat.collapsed = false
+      } else if (change.id === 'collapse') {
+        for (const cat of navStore.categories) cat.collapsed = true
+      }
+    } else if (change.op === 'reorder-categories' && Array.isArray(change.data)) {
+      const orders = change.data as Array<{ id: string; order: number }>
+      for (const { id, order } of orders) {
+        const cat = navStore.categories.find(c => c.id === id)
+        if (cat) cat.order = order
+      }
+    } else if (change.op === 'update' && change.type === 'settings' && change.data) {
+      storageSet('userSettings', change.data)
+      settingsStore.reloadFromStorage()
+    } else if (change.op === 'delete-resource' && change.type === 'resource') {
+      // 壁纸删除不需要本地处理（pull 时会处理）
+    } else if (change.op === 'import-data') {
+      // 全量导入，触发完整 pull
+      navStore.reloadFromStorage()
+      settingsStore.reloadFromStorage()
+      return
+    // 传统 CRUD 变更
+    } else if (change.type === 'link') {
       if (change.op === 'add' && change.data) {
         if (!navStore.links.find(l => l.id === change.id)) {
           navStore.links.push(change.data as any)
@@ -412,7 +485,7 @@ function applyChanges(changes: Array<{ op: string; type: string; id: string; dat
 }
 
 function handleBeforeUnload() {
-  auth.beaconPush()
+  // 纯增量同步模式：不再需要 beacon 推送
 }
 
 function handleRemoteUpdate() {

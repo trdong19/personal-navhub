@@ -2,39 +2,14 @@
  * 认证组合式函数 - 单密码认证
  */
 import { ref } from 'vue'
-import { saveBgImage, blobToDataUrl, getFilesByCategory, getBgImageBlob, saveFile, deleteFile } from '@/utils/fileStore'
+import { saveBgImage, blobToDataUrl, getBgImageBlob, saveFile, deleteFile } from '@/utils/fileStore'
 import { storageSet } from '@/utils/storage'
 
 function safeSetItem(key: string, value: string) {
   try { localStorage.setItem(key, value) } catch {}
 }
 
-const PUSH_RES_HASH_KEY = 'nav_push_res_hashes'
 const PULL_RES_HASH_KEY = 'nav_pull_res_hashes'
-
-function resHash(data: string): string {
-  let h = 0
-  const step = Math.max(1, Math.floor(data.length / 200))
-  for (let i = 0; i < data.length; i += step) {
-    h = ((h << 5) - h + data.charCodeAt(i)) | 0
-  }
-  return `${data.length}_${h}`
-}
-
-function filterNewResources(resources: Record<string, string>): Record<string, string> {
-  const raw = localStorage.getItem(PUSH_RES_HASH_KEY)
-  const synced: Record<string, string> = raw ? JSON.parse(raw) : {}
-  const result: Record<string, string> = {}
-  for (const [key, val] of Object.entries(resources)) {
-    const hash = resHash(val)
-    if (synced[key] !== hash) {
-      result[key] = val
-      synced[key] = hash
-    }
-  }
-  localStorage.setItem(PUSH_RES_HASH_KEY, JSON.stringify(synced))
-  return result
-}
 
 const TOKEN_KEY = 'nav_auth_token'
 
@@ -43,10 +18,6 @@ const authStatus = ref<'idle' | 'loading' | 'success' | 'error'>('idle')
 const authMessage = ref('')
 const isLoggedIn = ref(!!token.value)
 const authReady = ref(false)
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let lastPushHash = ''
-let isPushing = false
-let pendingPush = false
 const CACHED_VERSION_KEY = 'nav_cached_server_version'
 
 function getApiBase(): string {
@@ -79,12 +50,10 @@ export function useAuth() {
   function clearAuth() {
     token.value = ''
     localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(PUSH_RES_HASH_KEY)
     localStorage.removeItem(PULL_RES_HASH_KEY)
     localStorage.removeItem('nav_cached_resources')
     localStorage.removeItem(CACHED_VERSION_KEY)
     isLoggedIn.value = false
-    lastPushHash = ''
   }
 
   /** 检查是否已设置密码 */
@@ -154,137 +123,24 @@ export function useAuth() {
     authMessage.value = ''
   }
 
-  // ==================== 数据同步 ====================
+  // ==================== 增量同步 ====================
 
-  async function push(): Promise<boolean> {
-    if (!token.value) return false
-    if (isPushing) {
-      pendingPush = true
-      return false
-    }
-    isPushing = true
-    pendingPush = false
+  async function incrementalSync(op: string, data: Record<string, unknown> = {}): Promise<{ success: boolean; version: number } | null> {
+    if (!token.value) return null
     try {
-      const result = await doPush()
-      if (pendingPush) {
-        pendingPush = false
-        await doPush()
-      }
-      return result
-    } finally {
-      isPushing = false
-    }
-  }
-
-  async function doPush(): Promise<boolean> {
-    if (!token.value) return false
-    try {
-      const settingsData = localStorage.getItem('nav_userSettings')
-      const linksData = localStorage.getItem('nav_navLinks')
-      const categoriesData = localStorage.getItem('nav_navCategories')
-      const recordsData = localStorage.getItem('nav_accessRecords')
-
-      const resourceVersion = localStorage.getItem('nav_resource_version') || '0'
-      const coreHash = resHash((settingsData || '') + '|' + (linksData || '') + '|' + (categoriesData || '') + '|' + (recordsData || '') + '|rv:' + resourceVersion)
-      if (coreHash === lastPushHash) {
-        return true
-      }
-
-      const settings = settingsData ? JSON.parse(settingsData) : null
-      const links: any[] = linksData ? JSON.parse(linksData) : []
-      const categories = categoriesData ? JSON.parse(categoriesData) : []
-      const accessRecords = recordsData ? JSON.parse(recordsData) : []
-
-      const resources: Record<string, string> = {}
-
-      try {
-        const bgBlob = await getBgImageBlob()
-        if (bgBlob) {
-          resources['bg'] = await blobToDataUrl(bgBlob)
-        }
-      } catch {
-        const localBg = localStorage.getItem('nav_local_bg_image')
-        if (localBg && localBg.startsWith('data:')) {
-          resources['bg'] = localBg
-        }
-      }
-
-      try {
-        const wallpaperFiles = await getFilesByCategory('wallpaper')
-        for (const f of wallpaperFiles) {
-          if (f.id === 'bg_image') continue
-          const dataUrl = await blobToDataUrl(f.blob)
-          resources[`wallpaper:${f.id}`] = dataUrl
-        }
-      } catch {}
-
-      for (const link of links) {
-        if (link.iconUrl && typeof link.iconUrl === 'string' && link.iconUrl.startsWith('data:')) {
-          const resId = `icon_${link.id}`
-          resources[resId] = link.iconUrl
-          link.iconUrl = `res://${resId}`
-        }
-        if (link.cachedIconData && typeof link.cachedIconData === 'string' && link.cachedIconData.startsWith('data:')) {
-          const resId = `cachedicon_${link.id}`
-          resources[resId] = link.cachedIconData
-          link.cachedIconData = `res://${resId}`
-        }
-      }
-
-      const deletedWallpapers = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
-
-      const data: any = {
-        settings,
-        links,
-        categories,
-        accessRecords,
-        deletedWallpapers,
-        updatedAt: Date.now(),
-        version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
-      }
-
-      if (Object.keys(resources).length > 0) {
-        const newResources = filterNewResources(resources)
-        if (Object.keys(newResources).length > 0) {
-          data.resources = newResources
-        }
-      }
-
-      const res = await fetch(`${getApiBase()}/sync`, {
+      const res = await fetch(`${getApiBase()}/incremental`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ data }),
+        body: JSON.stringify({ op, ...data }),
       })
-      if (res.status === 401) {
-        clearAuth()
-        return false
-      }
-      if (res.status === 409) {
-        const conflictData = await safeJson(res)
-        // 使用服务器版本号重试，不本地递增
-        const serverVersion = conflictData.serverVersion || 0
-        safeSetItem(CACHED_VERSION_KEY, String(serverVersion))
-        data.version = serverVersion
-        const retryRes = await fetch(`${getApiBase()}/sync`, {
-          method: 'POST',
-          headers: headers(),
-          body: JSON.stringify({ data }),
-        })
-        if (retryRes.ok) {
-          const retryResult = await safeJson(retryRes)
-          safeSetItem(CACHED_VERSION_KEY, String(retryResult.version))
-          lastPushHash = coreHash
-        }
-        return retryRes.ok
-      }
+      if (res.status === 401) { clearAuth(); return null }
       const result = await safeJson(res)
-      if (res.ok) {
-        lastPushHash = coreHash
-        safeSetItem(CACHED_VERSION_KEY, String(result.version))
-      }
-      return res.ok
-    } catch {
-      return false
+      if (!res.ok) { console.error('[incrementalSync]', result.error); return null }
+      if (result.version) safeSetItem(CACHED_VERSION_KEY, String(result.version))
+      return result
+    } catch (e) {
+      console.error('[incrementalSync] network error', e)
+      return null
     }
   }
 
@@ -414,8 +270,6 @@ export function useAuth() {
         try { await deleteFile(deletedId) } catch {}
       }
 
-      lastPushHash = ''
-
       if (result.version) {
         safeSetItem(CACHED_VERSION_KEY, String(result.version))
       }
@@ -425,60 +279,6 @@ export function useAuth() {
       console.error('[pull错误]', err?.message || err)
       return false
     }
-  }
-
-  function debouncePush() {
-    if (!token.value) return
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => { push() }, 2000)
-  }
-
-  function flushPush() {
-    if (debounceTimer) {
-      clearTimeout(debounceTimer)
-      debounceTimer = null
-    }
-    if (token.value) {
-      return push()
-    }
-    return Promise.resolve(false)
-  }
-
-  function beaconPush() {
-    if (!token.value) return
-    // 不取消 debounce timer，确保包含资源的完整推送仍会发出
-    try {
-      const settingsData = localStorage.getItem('nav_userSettings')
-      const linksData = localStorage.getItem('nav_navLinks')
-      const categoriesData = localStorage.getItem('nav_navCategories')
-      const recordsData = localStorage.getItem('nav_accessRecords')
-      const links: any[] = linksData ? JSON.parse(linksData) : []
-      const categories: any[] = categoriesData ? JSON.parse(categoriesData) : []
-      if (links.length === 0 && categories.length === 0) return
-      for (const link of links) {
-        if (link.iconUrl && typeof link.iconUrl === 'string' && link.iconUrl.startsWith('data:')) {
-          link.iconUrl = ''
-        }
-        if (link.cachedIconData && typeof link.cachedIconData === 'string' && link.cachedIconData.startsWith('data:')) {
-          delete link.cachedIconData
-        }
-      }
-      const deletedWallpapers = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
-      const payload = JSON.stringify({
-        action: 'sync',
-        data: {
-          settings: settingsData ? JSON.parse(settingsData) : null,
-          links,
-          categories,
-          accessRecords: recordsData ? JSON.parse(recordsData) : [],
-          deletedWallpapers,
-          updatedAt: Date.now(),
-          version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
-        },
-      })
-      const blob = new Blob([payload], { type: 'application/json' })
-      navigator.sendBeacon(`${getApiBase()}/sync-beacon?token=${token.value}`, blob)
-    } catch {}
   }
 
   async function checkServerVersion(): Promise<number | null> {
@@ -515,9 +315,7 @@ export function useAuth() {
     if (res.status === 401) { clearAuth(); throw new Error('登录已过期') }
     const data = await safeJson(res)
     if (!res.ok) throw new Error(data.error || '操作失败')
-    // 更新本地缓存版本号
     if (data.version) safeSetItem(CACHED_VERSION_KEY, String(data.version))
-    lastPushHash = ''
     return data
   }
 
@@ -566,11 +364,8 @@ export function useAuth() {
     setup,
     login,
     logout,
-    push,
+    incrementalSync,
     pull,
-    debouncePush,
-    flushPush,
-    beaconPush,
     checkServerVersion,
     changePassword,
     addLink,

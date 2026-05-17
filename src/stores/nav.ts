@@ -58,8 +58,8 @@ export const useNavStore = defineStore('nav', () => {
   /** 标签筛选（空数组表示不筛选） */
   const tagFilter = ref<string[]>([])
 
-  /** 获取防抖同步推送函数 */
-  const { flushPush, token, addLink: apiAddLink, updateLink: apiUpdateLink, deleteLink: apiDeleteLink, addCategory: apiAddCategory, updateCategory: apiUpdateCategory, deleteCategory: apiDeleteCategory } = useAuth()
+  /** 获取增量同步函数 */
+  const { incrementalSync, token, addLink: apiAddLink, updateLink: apiUpdateLink, deleteLink: apiDeleteLink, addCategory: apiAddCategory, updateCategory: apiUpdateCategory, deleteCategory: apiDeleteCategory } = useAuth()
 
   const allTags = computed(() => {
     const tagSet = new Set<string>()
@@ -264,6 +264,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     exitSelectionMode()
     saveLinks()
+    incrementalSync('batch-links', { action: 'pin', ids: toPin.map(l => l.id), data: { pinnedOrders: toPin.map(l => ({ id: l.id, pinnedOrder: l.pinnedOrder })) } }).catch(() => {})
     return toPin.length
   }
 
@@ -277,6 +278,7 @@ export const useNavStore = defineStore('nav', () => {
     }
     exitSelectionMode()
     saveLinks()
+    incrementalSync('batch-links', { action: 'unpin', ids: toUnpin.map(l => l.id) }).catch(() => {})
     return toUnpin.length
   }
 
@@ -294,11 +296,13 @@ export const useNavStore = defineStore('nav', () => {
   function batchDeleteLinks(): number {
     const count = selectedLinkIds.value.size
     if (count === 0) return 0
+    const selectedIds = [...selectedLinkIds.value]
     const linksToDelete = links.value.filter(l => selectedLinkIds.value.has(l.id))
     deletedLinksCache.value = [...linksToDelete]
     links.value = links.value.filter(l => !selectedLinkIds.value.has(l.id))
     saveLinks()
     exitSelectionMode()
+    incrementalSync('batch-links', { action: 'delete', ids: selectedIds }).catch(() => {})
     return count
   }
 
@@ -369,6 +373,8 @@ export const useNavStore = defineStore('nav', () => {
     }
     
     saveLinks()
+    const movedIds = records.map(r => r.linkId)
+    incrementalSync('batch-links', { action: 'move', ids: movedIds, data: { categoryId, linkOrders: links.value.filter(l => movedIds.includes(l.id)).map(l => ({ id: l.id, order: l.order })) } }).catch(() => {})
     return count
   }
 
@@ -467,6 +473,7 @@ export const useNavStore = defineStore('nav', () => {
       link.accessCount++
       link.lastAccessed = Date.now()
       saveLinks()
+      incrementalSync('record-access', { id: linkId }).catch(() => {})
     }
     accessRecords.value.push({
       linkId,
@@ -490,6 +497,8 @@ export const useNavStore = defineStore('nav', () => {
       if (link) link.order = index
     })
     saveLinks()
+    const orders = orderedIds.map((id, index) => ({ id, order: index }))
+    incrementalSync('reorder-links', { orders }).catch(() => {})
   }
 
   /**
@@ -502,6 +511,8 @@ export const useNavStore = defineStore('nav', () => {
       if (link) link.pinnedOrder = index
     })
     saveLinks()
+    const orders = orderedIds.map((id, index) => ({ id, pinnedOrder: index }))
+    incrementalSync('reorder-pinned', { orders }).catch(() => {})
   }
 
   // ==================== 分类操作 ====================
@@ -515,17 +526,20 @@ export const useNavStore = defineStore('nav', () => {
     if (cat) {
       cat.collapsed = !cat.collapsed
       saveCategories()
+      incrementalSync('batch-categories', { action: 'toggle', ids: [categoryId] }).catch(() => {})
     }
   }
 
   function expandAllCategories() {
     categories.value.forEach(cat => { cat.collapsed = false })
     saveCategories()
+    incrementalSync('batch-categories', { action: 'expand', ids: categories.value.map(c => c.id) }).catch(() => {})
   }
 
   function collapseAllCategories() {
     categories.value.forEach(cat => { cat.collapsed = true })
     saveCategories()
+    incrementalSync('batch-categories', { action: 'collapse', ids: categories.value.map(c => c.id) }).catch(() => {})
   }
 
   /**
@@ -619,6 +633,12 @@ export const useNavStore = defineStore('nav', () => {
         categories.value = data.categories
         saveCategories()
       }
+      incrementalSync('import-data', {
+        settings: JSON.parse(localStorage.getItem('nav_userSettings') || '{}'),
+        links: data.links || [],
+        categories: data.categories || [],
+        accessRecords: data.accessRecords || [],
+      }).catch(() => {})
       return true
     } catch {
       return false
@@ -658,6 +678,8 @@ export const useNavStore = defineStore('nav', () => {
       if (cat) cat.order = index
     })
     saveCategories()
+    const orders = orderedIds.map((id, index) => ({ id, order: index }))
+    incrementalSync('reorder-categories', { orders }).catch(() => {})
   }
 
   /**

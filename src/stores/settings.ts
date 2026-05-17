@@ -99,8 +99,8 @@ export const useSettingsStore = defineStore('settings', () => {
   /** 是否为深色模式 */
   const isDark = ref(false)
 
-  /** 获取防抖同步推送函数 */
-  const { debouncePush, push } = useAuth()
+  /** 获取增量同步函数 */
+  const { incrementalSync } = useAuth()
 
   /**
    * 释放旧的 blob: URL（避免内存泄漏）
@@ -126,7 +126,7 @@ export const useSettingsStore = defineStore('settings', () => {
    */
   function saveAndSync() {
     save()
-    push()
+    incrementalSync('update-settings', { settings: settings.value }).catch(() => {})
   }
 
   // ==================== 快照机制（设置面板用） ====================
@@ -579,7 +579,8 @@ export const useSettingsStore = defineStore('settings', () => {
     storageRemove('navCategories')
     storageRemove('accessRecords')
     try { deleteBgImage() } catch {}
-    saveAndSync()
+    save()
+    incrementalSync('import-data', { settings: settings.value, links: [], categories: [], accessRecords: [] }).catch(() => {})
     applyTheme()
   }
 

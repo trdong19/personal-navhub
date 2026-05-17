@@ -621,6 +621,118 @@ const server = http.createServer(async (req, res) => {
       return json(res, { success: true })
     }
 
+    // ---------- 增量同步 ----------
+    if (action === 'incremental') {
+      if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
+      const { op, ...data } = body
+
+      switch (op) {
+        case 'update-settings': {
+          appData.settings = data.settings
+          logChange('update', 'settings', 'main', data.settings)
+          break
+        }
+        case 'batch-links': {
+          const { action: batchAction, ids, data: batchData } = data
+          if (batchAction === 'pin') {
+            const orders = batchData?.pinnedOrders || []
+            for (const link of appData.links) {
+              if (ids.includes(link.id)) {
+                link.pinned = true
+                const po = orders.find(o => o.id === link.id)
+                if (po) link.pinnedOrder = po.pinnedOrder
+              }
+            }
+          } else if (batchAction === 'unpin') {
+            for (const link of appData.links) {
+              if (ids.includes(link.id)) link.pinned = false
+            }
+          } else if (batchAction === 'delete') {
+            appData.links = appData.links.filter(l => !ids.includes(l.id))
+          } else if (batchAction === 'move' && batchData) {
+            for (const link of appData.links) {
+              if (ids.includes(link.id)) {
+                link.category = batchData.categoryId
+                const lo = batchData.linkOrders?.find(o => o.id === link.id)
+                if (lo) link.order = lo.order
+              }
+            }
+          }
+          logChange('batch-links', 'link', batchAction, { ids, data: batchData })
+          break
+        }
+        case 'reorder-links': {
+          const orders = data.orders || []
+          for (const { id, order } of orders) {
+            const link = appData.links.find(l => l.id === id)
+            if (link) link.order = order
+          }
+          logChange('reorder-links', 'link', 'reorder', orders)
+          break
+        }
+        case 'reorder-pinned': {
+          const orders = data.orders || []
+          for (const { id, pinnedOrder } of orders) {
+            const link = appData.links.find(l => l.id === id)
+            if (link) link.pinnedOrder = pinnedOrder
+          }
+          logChange('reorder-pinned', 'link', 'reorder-pinned', orders)
+          break
+        }
+        case 'reorder-categories': {
+          const orders = data.orders || []
+          for (const { id, order } of orders) {
+            const cat = appData.categories.find(c => c.id === id)
+            if (cat) cat.order = order
+          }
+          logChange('reorder-categories', 'category', 'reorder', orders)
+          break
+        }
+        case 'record-access': {
+          const link = appData.links.find(l => l.id === data.id)
+          if (link) {
+            link.accessCount = (link.accessCount || 0) + 1
+            link.lastAccessed = Date.now()
+          }
+          logChange('record-access', 'link', data.id, link ? { accessCount: link.accessCount, lastAccessed: link.lastAccessed } : null)
+          break
+        }
+        case 'batch-categories': {
+          const { action: catAction, ids } = data
+          if (catAction === 'toggle') {
+            for (const cat of appData.categories) {
+              if (ids.includes(cat.id)) cat.collapsed = !cat.collapsed
+            }
+          } else if (catAction === 'expand') {
+            for (const cat of appData.categories) cat.collapsed = false
+          } else if (catAction === 'collapse') {
+            for (const cat of appData.categories) cat.collapsed = true
+          }
+          logChange('batch-categories', 'category', catAction, ids)
+          break
+        }
+        case 'delete-resource': {
+          resources.delete(data.resourceId)
+          logChange('delete-resource', 'resource', data.resourceId, null)
+          break
+        }
+        case 'import-data': {
+          appData.settings = data.settings
+          appData.links = data.links || []
+          appData.categories = data.categories || []
+          appData.accessRecords = data.accessRecords || []
+          logChange('import-data', 'sync', 'import', null)
+          logChange('fullSync', 'sync', 'full', null)
+          break
+        }
+        default:
+          return json(res, { error: `未知操作: ${op}` }, 400)
+      }
+
+      saveToDiskDebounced()
+      return json(res, { success: true, version: appData.version })
+    }
+
     console.log(`[未知] method=${req.method} path=${url.pathname} action=${action}`)
     return json(res, { error: '未知操作' }, 404)
   }
