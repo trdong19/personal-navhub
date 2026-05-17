@@ -247,9 +247,9 @@ function handleToolbarDragEnd() {
 
 // 工具栏触摸拖拽
 let touchTbDragging = false
-let touchTbDragId: string | null = null
+let touchTbDragId: ToolbarButtonId | null = null
 let touchTbClone: HTMLElement | null = null
-let touchTbDropTargetId: string | null = null
+let touchTbDropTargetId: ToolbarButtonId | null = null
 let touchTbItemRect: DOMRect | null = null
 const toolbarListRef = ref<HTMLElement | null>(null)
 
