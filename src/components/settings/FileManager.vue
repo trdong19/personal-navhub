@@ -3,7 +3,9 @@ import { ref, computed, onMounted } from 'vue'
 import { getAllFiles, saveFile, deleteFile, type StoredFile, blobToDataUrl } from '@/utils/fileStore'
 import { generateId } from '@/utils/helpers'
 import { useToast } from '@/composables/useToast'
+import { useAuth } from '@/composables/useAuth'
 
+const auth = useAuth()
 const emit = defineEmits<{
   close: []
   'select-wallpaper': [dataUrl: string]
@@ -39,21 +41,34 @@ async function handleUpload(e: Event) {
   const input = e.target as HTMLInputElement
   const fileList = input.files
   if (!fileList) return
+  const uploadedIds: string[] = []
   for (const file of Array.from(fileList)) {
     if (file.size > 10 * 1024 * 1024) {
       toast.warning(`${file.name} 大小超过 10MB，跳过`)
       continue
     }
+    const id = generateId()
     await saveFile({
-      id: generateId(),
+      id,
       name: file.name,
       type: file.type,
       category: activeCategory.value,
       blob: file,
     })
+    uploadedIds.push(id)
   }
   await loadFiles()
   input.value = ''
+  // 推送上传的壁纸到服务器
+  if (uploadedIds.length > 0) {
+    const resources: Record<string, string> = {}
+    for (const file of files.value) {
+      if (uploadedIds.includes(file.id)) {
+        resources[`wallpaper:${file.id}`] = await blobToDataUrl(file.blob)
+      }
+    }
+    auth.incrementalSync('push-resources', { resources }).catch(() => {})
+  }
 }
 
 async function handleDelete(id: string) {
@@ -71,6 +86,8 @@ async function handleDelete(id: string) {
   if (previewFile.value?.id === id) {
     closePreview()
   }
+  // 同步删除到服务器
+  auth.incrementalSync('delete-resource', { resourceId: `wallpaper:${id}` }).catch(() => {})
   emit('delete-wallpaper', id)
 }
 
