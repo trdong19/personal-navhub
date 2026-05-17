@@ -1,6 +1,6 @@
 services:
   navhub:
-    build: .
+    image: ghcr.io/trdong19/personal-navhub:latest
     ports:
       - "8888:8888"
     volumes:
