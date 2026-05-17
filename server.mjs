@@ -348,6 +348,7 @@ const server = http.createServer(async (req, res) => {
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
+        deletedWallpapers: body.data.deletedWallpapers || [],
         updatedAt: Date.now(),
         version: newVersion,
         changeLog: oldChangeLog,
@@ -358,6 +359,13 @@ const server = http.createServer(async (req, res) => {
       if (body.data.resources) {
         for (const [key, val] of Object.entries(body.data.resources)) {
           resources.set(key, val)
+        }
+      }
+
+      // 清理已删除壁纸的服务器资源
+      if (body.data.deletedWallpapers && Array.isArray(body.data.deletedWallpapers)) {
+        for (const id of body.data.deletedWallpapers) {
+          resources.delete(`wallpaper:${id}`)
         }
       }
 
@@ -386,6 +394,7 @@ const server = http.createServer(async (req, res) => {
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
+        deletedWallpapers: body.data.deletedWallpapers || appData.deletedWallpapers || [],
         updatedAt: Date.now(),
         version: beaconVersion,
         changeLog: appData.changeLog || [],

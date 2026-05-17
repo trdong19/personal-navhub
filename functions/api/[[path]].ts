@@ -212,11 +212,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
       }
 
-      const syncData: SyncData = {
+      const syncData: SyncData & { deletedWallpapers?: string[] } = {
         settings: body.data.settings as SyncData['settings'],
         links: (body.data.links as unknown[]) || [],
         categories: (body.data.categories as unknown[]) || [],
         accessRecords: (body.data.accessRecords as unknown[]) || [],
+        deletedWallpapers: (body.data.deletedWallpapers as string[]) || [],
         updatedAt: Date.now(),
         version,
         changeLog: existingRaw ? (JSON.parse(existingRaw).changeLog || []) : [],
@@ -236,6 +237,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             await env.NAV_KV.put(`res:${key}`, val)
           }
           meta[key] = resHash(val)
+        }
+        await env.NAV_KV.put('system:res_meta', JSON.stringify(meta))
+      }
+
+      // 清理已删除壁纸的服务器资源
+      const deletedWallpapers = body.data.deletedWallpapers as string[] | undefined
+      if (deletedWallpapers && Array.isArray(deletedWallpapers)) {
+        const metaRaw = await env.NAV_KV.get('system:res_meta')
+        const meta: Record<string, string> = metaRaw ? JSON.parse(metaRaw) : {}
+        for (const id of deletedWallpapers) {
+          const resKey = `wallpaper:${id}`
+          await env.NAV_KV.delete(resKey)
+          delete meta[resKey]
         }
         await env.NAV_KV.put('system:res_meta', JSON.stringify(meta))
       }
@@ -569,14 +583,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         version = (existing.version || 0) + 1
       }
 
-      const syncData: SyncData = {
+      const existingData = existingRaw ? JSON.parse(existingRaw) : {}
+      const syncData: SyncData & { deletedWallpapers?: string[] } = {
         settings: body.data.settings as SyncData['settings'],
         links: (body.data.links as unknown[]) || [],
         categories: (body.data.categories as unknown[]) || [],
         accessRecords: (body.data.accessRecords as unknown[]) || [],
+        deletedWallpapers: (body.data.deletedWallpapers as string[]) || existingData.deletedWallpapers || [],
         updatedAt: Date.now(),
         version,
-        changeLog: existingRaw ? (JSON.parse(existingRaw).changeLog || []) : [],
+        changeLog: existingData.changeLog || [],
       }
       syncData.changeLog!.push({ v: version, op: 'fullSync', type: 'sync', id: 'full', data: null })
 

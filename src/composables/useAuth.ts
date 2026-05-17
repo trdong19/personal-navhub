@@ -2,7 +2,7 @@
  * 认证组合式函数 - 单密码认证
  */
 import { ref } from 'vue'
-import { saveBgImage, blobToDataUrl, getFilesByCategory, getBgImageBlob, saveFile } from '@/utils/fileStore'
+import { saveBgImage, blobToDataUrl, getFilesByCategory, getBgImageBlob, saveFile, deleteFile } from '@/utils/fileStore'
 import { storageSet } from '@/utils/storage'
 
 function safeSetItem(key: string, value: string) {
@@ -231,11 +231,14 @@ export function useAuth() {
         }
       }
 
+      const deletedWallpapers = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
+
       const data: any = {
         settings,
         links,
         categories,
         accessRecords,
+        deletedWallpapers,
         updatedAt: Date.now(),
         version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
       }
@@ -385,19 +388,30 @@ export function useAuth() {
         }
       }
 
-      const deletedImages: string[] = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
+      // 合并服务器的删除列表到本地
+      const serverDeleted: string[] = result.data.deletedWallpapers || []
+      const localDeleted: string[] = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
+      const mergedDeleted = [...new Set([...localDeleted, ...serverDeleted])]
+      if (mergedDeleted.length > localDeleted.length) {
+        localStorage.setItem('nav_deleted_bg_images', JSON.stringify(mergedDeleted))
+      }
 
       for (const [key, dataUrl] of Object.entries(resources)) {
         if (key === 'bg' || key.startsWith('icon_') || key.startsWith('cachedicon_')) continue
         if (key.startsWith('wallpaper:') && typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
           try {
             const fileId = key.replace('wallpaper:', '')
-            if (deletedImages.includes(fileId)) continue
+            if (mergedDeleted.includes(fileId)) continue
             const res = await fetch(dataUrl)
             const blob = await res.blob()
             await saveFile({ id: fileId, name: fileId, type: blob.type || 'image/jpeg', category: 'wallpaper', blob })
           } catch {}
         }
+      }
+
+      // 清理本地 IndexedDB 中被标记删除的壁纸
+      for (const deletedId of mergedDeleted) {
+        try { await deleteFile(deletedId) } catch {}
       }
 
       lastPushHash = ''
@@ -432,10 +446,7 @@ export function useAuth() {
 
   function beaconPush() {
     if (!token.value) return
-    if (debounceTimer) {
-      clearTimeout(debounceTimer)
-      debounceTimer = null
-    }
+    // 不取消 debounce timer，确保包含资源的完整推送仍会发出
     try {
       const settingsData = localStorage.getItem('nav_userSettings')
       const linksData = localStorage.getItem('nav_navLinks')
@@ -452,6 +463,7 @@ export function useAuth() {
           delete link.cachedIconData
         }
       }
+      const deletedWallpapers = JSON.parse(localStorage.getItem('nav_deleted_bg_images') || '[]')
       const payload = JSON.stringify({
         action: 'sync',
         data: {
@@ -459,6 +471,7 @@ export function useAuth() {
           links,
           categories,
           accessRecords: recordsData ? JSON.parse(recordsData) : [],
+          deletedWallpapers,
           updatedAt: Date.now(),
           version: parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0'),
         },
