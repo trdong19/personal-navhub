@@ -245,6 +245,17 @@ function handleToolbarDragEnd() {
   toolbarDropTarget.value = null
 }
 
+function moveToolbarItem(id: ToolbarButtonId, direction: -1 | 1) {
+  const items = settingsStore.getToolbar()
+  const idx = items.findIndex(b => b.id === id)
+  const newIdx = idx + direction
+  if (newIdx < 0 || newIdx >= items.length) return
+  const ids = items.map(b => b.id)
+  ids.splice(idx, 1)
+  ids.splice(newIdx, 0, id)
+  settingsStore.reorderToolbar(ids)
+}
+
 onMounted(() => {
   settingsStore.takeSnapshot()
   document.body.style.overflow = 'hidden'
@@ -619,6 +630,17 @@ function handleCatDragEnd() {
   draggingCatId.value = null
   catDropTargetId.value = null
   document.body.classList.remove('is-dragging')
+}
+
+function moveCategory(catId: string, direction: -1 | 1) {
+  const cats = navStore.sortedCategories
+  const idx = cats.findIndex(c => c.id === catId)
+  const newIdx = idx + direction
+  if (newIdx < 0 || newIdx >= cats.length) return
+  const ids = cats.map(c => c.id)
+  ids.splice(idx, 1)
+  ids.splice(newIdx, 0, catId)
+  navStore.reorderCategories(ids)
 }
 
 function compressImage(dataUrl: string, maxDim: number, quality: number): Promise<string> {
@@ -1002,26 +1024,22 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </div>
 
           <h4>工具栏</h4>
-          <div class="toolbar-hint">拖拽调整顺序，点击切换显隐</div>
+          <div class="toolbar-hint">点击箭头调整顺序，点击切换显隐</div>
           <div class="toolbar-manage-list">
             <div
-              v-for="btn in settingsStore.getToolbar()"
+              v-for="(btn, index) in settingsStore.getToolbar()"
               :key="btn.id"
               class="toolbar-manage-item"
-              :class="{
-                'toolbar-dragging': toolbarDragId === btn.id,
-                'toolbar-drop-target': toolbarDropTarget === btn.id,
-                'toolbar-hidden': !btn.visible
-              }"
-              draggable="true"
-              @dragstart="handleToolbarDragStart($event, btn.id)"
-              @dragover="handleToolbarDragOver($event, btn.id)"
-              @drop="handleToolbarDrop($event, btn.id)"
-              @dragend="handleToolbarDragEnd"
+              :class="{ 'toolbar-hidden': !btn.visible }"
             >
-              <span class="toolbar-manage-handle">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
-              </span>
+              <div class="sort-move-btns">
+                <button class="sort-move-btn" :disabled="index === 0" @click="moveToolbarItem(btn.id, -1)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
+                </button>
+                <button class="sort-move-btn" :disabled="index === settingsStore.getToolbar().length - 1" @click="moveToolbarItem(btn.id, 1)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+              </div>
               <span class="toolbar-manage-name">{{ toolbarLabelMap[btn.id] }}</span>
               <button class="toolbar-toggle" @click="settingsStore.toggleToolbarButton(btn.id)">
                 {{ btn.visible ? '✓' : '✕' }}
@@ -1162,28 +1180,21 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                   </button>
                 </div>
-                <div class="category-sort-hint">拖拽调整分类顺序，拖拽靠近边缘可加速滚动</div>
-                <div ref="categorySortListRef" class="category-sort-list cat-sort-body" @dragover="handleCatListDragOver">
+                <div class="category-sort-hint">点击箭头调整分类顺序</div>
+                <div class="category-sort-list cat-sort-body">
                   <div
-                    v-for="cat in navStore.sortedCategories"
+                    v-for="(cat, index) in navStore.sortedCategories"
                     :key="cat.id"
                     class="category-sort-item"
-                    :class="{
-                      'cat-dragging': draggingCatId === cat.id,
-                      'cat-drop-target': catDropTargetId === cat.id
-                    }"
-                    :data-cat-id="cat.id"
-                    draggable="true"
-                    @dragstart="handleCatDragStart($event, cat.id)"
-                    @dragover="handleCatDragOver($event, cat.id)"
-                    @dragleave="handleCatDragLeave(cat.id)"
-                    @drop="handleCatDrop($event, cat.id)"
-                    @dragend="handleCatDragEnd"
-                    @touchstart="handleCatTouchStart($event, cat.id)"
                   >
-                    <span class="category-sort-handle">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
-                    </span>
+                    <div class="sort-move-btns">
+                      <button class="sort-move-btn" :disabled="index === 0" @click="moveCategory(cat.id, -1)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
+                      </button>
+                      <button class="sort-move-btn" :disabled="index === navStore.sortedCategories.length - 1" @click="moveCategory(cat.id, 1)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                      </button>
+                    </div>
                     <span class="category-sort-icon">{{ cat.icon }}</span>
                     <span class="category-sort-name">{{ cat.name }}</span>
                     <span class="category-sort-count">{{ navStore.getTotalLinksByCategory(cat.id) }} 个</span>
@@ -2008,24 +2019,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   border-color: var(--primary);
 }
 
-.category-sort-item.cat-dragging {
-  opacity: 0.4;
-  transform: scale(0.98);
-}
-
-.category-sort-item.cat-drop-target {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-  transform: scale(1.02);
-}
-
-.category-sort-handle {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
 .category-sort-icon {
   font-size: 16px;
   flex-shrink: 0;
@@ -2073,28 +2066,39 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   user-select: none;
 }
 
-.toolbar-manage-item:active {
-  cursor: grabbing;
-}
-
-.toolbar-manage-item.toolbar-dragging {
-  opacity: 0.4;
-}
-
-.toolbar-manage-item.toolbar-drop-target {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
 .toolbar-manage-item.toolbar-hidden {
   opacity: 0.5;
 }
 
-.toolbar-manage-handle {
+.sort-move-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.sort-move-btn {
   display: flex;
   align-items: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.sort-move-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: white;
+}
+
+.sort-move-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .toolbar-manage-name {
