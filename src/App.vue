@@ -271,10 +271,19 @@ onMounted(async () => {
 /** 后台同步：增量拉取服务端变更 */
 async function syncInBackground() {
   const serverVersion = await auth.checkServerVersion()
-  const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
-  if (serverVersion !== null && serverVersion > cachedVersion) {
+  if (serverVersion === null) return
+  let cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+  // 本地版本高于服务器说明之前递增过头，重置后重新拉取
+  if (cachedVersion > serverVersion) {
+    localStorage.setItem('nav_cached_server_version', String(serverVersion))
+    cachedVersion = serverVersion
+  }
+  if (serverVersion > cachedVersion) {
     const result = await auth.pullChanges()
-    if (result && result.changes.length > 0) {
+    if (result?.fullSync) {
+      // 全量同步已完成，重新加载本地数据
+      navStore.reloadFromStorage()
+    } else if (result && result.changes.length > 0) {
       const resolved = await resolveResources(result.changes)
       applyChanges(resolved)
     }
@@ -311,10 +320,16 @@ function handleVisibilityChange() {
     // 页面重新可见时：增量拉取服务端变更
     auth.checkServerVersion().then(serverVersion => {
       if (serverVersion === null) return
-      const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+      let cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
+      if (cachedVersion > serverVersion) {
+        localStorage.setItem('nav_cached_server_version', String(serverVersion))
+        cachedVersion = serverVersion
+      }
       if (serverVersion > cachedVersion) {
         auth.pullChanges().then(async result => {
-          if (result && result.changes.length > 0) {
+          if (result?.fullSync) {
+            navStore.reloadFromStorage()
+          } else if (result && result.changes.length > 0) {
             const resolved = await resolveResources(result.changes)
             applyChanges(resolved)
           }

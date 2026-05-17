@@ -342,15 +342,18 @@ const server = http.createServer(async (req, res) => {
       }
 
       const oldChangeLog = appData.changeLog || []
+      const newVersion = (appData.version || 0) + 1
       appData = {
         settings: body.data.settings,
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
-        version: (appData.version || 0) + 1,
+        version: newVersion,
         changeLog: oldChangeLog,
       }
+      // 写入 fullSync 标记，让其他设备知道需要全量拉取
+      appData.changeLog.push({ v: newVersion, op: 'fullSync', type: 'sync', id: 'full', data: null })
 
       if (body.data.resources) {
         for (const [key, val] of Object.entries(body.data.resources)) {
@@ -377,15 +380,17 @@ const server = http.createServer(async (req, res) => {
         return res.end()
       }
 
+      const beaconVersion = (appData.version || 0) + 1
       appData = {
         settings: body.data.settings,
         links: body.data.links || [],
         categories: body.data.categories || [],
         accessRecords: body.data.accessRecords || [],
         updatedAt: Date.now(),
-        version: (appData.version || 0) + 1,
+        version: beaconVersion,
         changeLog: appData.changeLog || [],
       }
+      appData.changeLog.push({ v: beaconVersion, op: 'fullSync', type: 'sync', id: 'full', data: null })
       saveToDiskDebounced()
       console.log('[Beacon同步]')
       res.writeHead(204)
@@ -532,8 +537,15 @@ const server = http.createServer(async (req, res) => {
       const since = body.since || 0
       const changeLog = appData.changeLog || []
 
-      // 过滤 > since 的变更，按 type+id 去重（保留最新）
+      // 过滤 > since 的变更
       const filtered = changeLog.filter((c) => c.v > since)
+
+      // 检测是否有全量同步标记，有则通知客户端执行完整 pull
+      if (filtered.some((c) => c.op === 'fullSync')) {
+        return json(res, { version: appData.version, changes: [], fullSync: true })
+      }
+
+      // 按 type+id 去重（保留最新）
       const deduped = new Map()
       for (const c of filtered) {
         deduped.set(`${c.type}:${c.id}`, c)

@@ -221,6 +221,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         version,
         changeLog: existingRaw ? (JSON.parse(existingRaw).changeLog || []) : [],
       }
+      // 写入 fullSync 标记，让其他设备知道需要全量拉取
+      syncData.changeLog!.push({ v: version, op: 'fullSync', type: 'sync', id: 'full', data: null })
 
       await env.NAV_KV.put('data:main', JSON.stringify(syncData))
 
@@ -463,8 +465,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const since = body.since || 0
       const changeLog = data.changeLog || []
 
-      // 过滤 > since 的变更，按 type+id 去重
+      // 过滤 > since 的变更
       const filtered = changeLog.filter((c) => c.v > since)
+
+      // 检测是否有全量同步标记，有则通知客户端执行完整 pull
+      if (filtered.some((c) => c.op === 'fullSync')) {
+        return json({ version: data.version, changes: [], fullSync: true })
+      }
+
+      // 按 type+id 去重
       const deduped = new Map<string, ChangeEntry>()
       for (const c of filtered) {
         deduped.set(`${c.type}:${c.id}`, c)
@@ -569,6 +578,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         version,
         changeLog: existingRaw ? (JSON.parse(existingRaw).changeLog || []) : [],
       }
+      syncData.changeLog!.push({ v: version, op: 'fullSync', type: 'sync', id: 'full', data: null })
 
       await env.NAV_KV.put('data:main', JSON.stringify(syncData))
       return new Response(null, { status: 204, headers: corsHeaders() })

@@ -256,9 +256,11 @@ export function useAuth() {
         return false
       }
       if (res.status === 409) {
-        const newVersion = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0') + 1
-        safeSetItem(CACHED_VERSION_KEY, String(newVersion))
-        data.version = newVersion
+        const conflictData = await safeJson(res)
+        // 使用服务器版本号重试，不本地递增
+        const serverVersion = conflictData.serverVersion || 0
+        safeSetItem(CACHED_VERSION_KEY, String(serverVersion))
+        data.version = serverVersion
         const retryRes = await fetch(`${getApiBase()}/sync`, {
           method: 'POST',
           headers: headers(),
@@ -412,8 +414,6 @@ export function useAuth() {
 
   function debouncePush() {
     if (!token.value) return
-    const v = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
-    localStorage.setItem(CACHED_VERSION_KEY, String(v + 1))
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => { push() }, 2000)
   }
@@ -516,7 +516,7 @@ export function useAuth() {
 
   // ==================== 增量拉取 ====================
 
-  async function pullChanges(): Promise<{ version: number; changes: Array<{ op: string; type: string; id: string; data: unknown }> } | null> {
+  async function pullChanges(): Promise<{ version: number; changes: Array<{ op: string; type: string; id: string; data: unknown }>; fullSync?: boolean } | null> {
     if (!token.value) return null
     try {
       const since = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
@@ -529,6 +529,13 @@ export function useAuth() {
       const data = await safeJson(res)
       if (!res.ok) return null
       if (data.version) safeSetItem(CACHED_VERSION_KEY, String(data.version))
+
+      // 检测到全量同步标记，执行完整 pull
+      if (data.fullSync) {
+        await pull()
+        return { version: data.version, changes: [], fullSync: true }
+      }
+
       return data
     } catch {
       return null
