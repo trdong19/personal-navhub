@@ -77,14 +77,6 @@ async function handleAuthSubmit() {
   } else {
     const ok = await auth.login(authPassword.value)
     if (ok) {
-      await auth.flushPush()
-      const serverVersion = await auth.checkServerVersion()
-      const cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
-      if (serverVersion !== null && serverVersion > cachedVersion) {
-        await auth.pull()
-        settingsStore.reloadFromStorage()
-        navStore.reloadFromStorage()
-      }
       closeAuthModal()
       emit('login-success')
     }
