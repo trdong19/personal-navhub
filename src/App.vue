@@ -286,6 +286,11 @@ async function syncInBackground() {
     } else if (result && result.changes.length > 0) {
       const resolved = await resolveResources(result.changes)
       applyChanges(resolved)
+      // 设置变更需要 pull 同步壁纸等资源
+      if (resolved.some(c => c.type === 'settings')) {
+        await auth.pull()
+        settingsStore.reloadFromStorage()
+      }
     }
   }
 }
@@ -329,6 +334,10 @@ function handleVisibilityChange() {
           } else if (result && result.changes.length > 0) {
             const resolved = await resolveResources(result.changes)
             applyChanges(resolved)
+            if (resolved.some(c => c.type === 'settings')) {
+              await auth.pull()
+              settingsStore.reloadFromStorage()
+            }
           }
         })
       }
