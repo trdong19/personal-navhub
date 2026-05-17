@@ -711,6 +711,13 @@ const server = http.createServer(async (req, res) => {
           logChange('batch-categories', 'category', catAction, ids)
           break
         }
+        case 'push-resources': {
+          const resMap = data.resources || {}
+          for (const [key, val] of Object.entries(resMap)) {
+            if (typeof val === 'string' && val) resources.set(key, val)
+          }
+          break
+        }
         case 'delete-resource': {
           resources.delete(data.resourceId)
           logChange('delete-resource', 'resource', data.resourceId, null)

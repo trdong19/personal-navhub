@@ -54,9 +54,6 @@ async function handleUpload(e: Event) {
   }
   await loadFiles()
   input.value = ''
-  // 递增资源版本号，触发 push 同步
-  const rv = parseInt(localStorage.getItem('nav_resource_version') || '0')
-  localStorage.setItem('nav_resource_version', String(rv + 1))
 }
 
 async function handleDelete(id: string) {

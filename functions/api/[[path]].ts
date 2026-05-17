@@ -699,6 +699,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           logChange(data, 'batch-categories', 'category', catAction, ids)
           break
         }
+        case 'push-resources': {
+          const resMap = (opData.resources || {}) as Record<string, string>
+          for (const [key, val] of Object.entries(resMap)) {
+            if (typeof val === 'string' && val) {
+              await env.NAV_KV.put(`res:${key}`, val)
+              resMeta[key] = val.length.toString(36)
+            }
+          }
+          await env.NAV_KV.put('system:res_meta', JSON.stringify(resMeta))
+          break
+        }
         case 'delete-resource': {
           const resId = opData.resourceId as string
           await env.NAV_KV.delete(`res:${resId}`)

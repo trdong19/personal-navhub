@@ -1225,7 +1225,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
           <h4>文件管理</h4>
           <button class="btn btn-secondary" @click="showFileManager = true">
-            📂 管理壁纸和图标
+            📂 管理壁纸
           </button>
 
           <h4>危险操作</h4>

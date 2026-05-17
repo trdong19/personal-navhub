@@ -383,9 +383,13 @@ export const useSettingsStore = defineStore('settings', () => {
       try { await deleteBgImage() } catch {}
     }
     applyTheme()
-    // 递增资源版本号，触发下次 push 同步壁纸变更
-    const rv = parseInt(localStorage.getItem('nav_resource_version') || '0')
-    localStorage.setItem('nav_resource_version', String(rv + 1))
+    saveAndSync()
+    // 推送壁纸资源到服务器
+    if (url && url.startsWith('data:')) {
+      incrementalSync('push-resources', { resources: { bg: url } }).catch(() => {})
+    } else if (url === '') {
+      incrementalSync('delete-resource', { resourceId: 'bg' }).catch(() => {})
+    }
   }
 
   /** 设置背景色 */
