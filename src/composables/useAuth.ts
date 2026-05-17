@@ -184,7 +184,8 @@ export function useAuth() {
       const categoriesData = localStorage.getItem('nav_navCategories')
       const recordsData = localStorage.getItem('nav_accessRecords')
 
-      const coreHash = resHash((settingsData || '') + '|' + (linksData || '') + '|' + (categoriesData || '') + '|' + (recordsData || ''))
+      const resourceVersion = localStorage.getItem('nav_resource_version') || '0'
+      const coreHash = resHash((settingsData || '') + '|' + (linksData || '') + '|' + (categoriesData || '') + '|' + (recordsData || '') + '|rv:' + resourceVersion)
       if (coreHash === lastPushHash) {
         return true
       }

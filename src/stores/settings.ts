@@ -383,6 +383,9 @@ export const useSettingsStore = defineStore('settings', () => {
       try { await deleteBgImage() } catch {}
     }
     applyTheme()
+    // 递增资源版本号，触发下次 push 同步壁纸变更
+    const rv = parseInt(localStorage.getItem('nav_resource_version') || '0')
+    localStorage.setItem('nav_resource_version', String(rv + 1))
   }
 
   /** 设置背景色 */

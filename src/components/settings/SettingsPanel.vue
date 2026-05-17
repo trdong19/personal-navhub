@@ -387,6 +387,10 @@ function handleFileManagerDelete(id: string) {
   }
   if (id === 'bg_image') {
     settingsStore.setBackgroundImage('')
+  } else {
+    // 非当前壁纸删除，递增资源版本号触发同步
+    const rv = parseInt(localStorage.getItem('nav_resource_version') || '0')
+    localStorage.setItem('nav_resource_version', String(rv + 1))
   }
 }
 
