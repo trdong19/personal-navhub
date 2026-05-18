@@ -252,8 +252,8 @@ onMounted(async () => {
   // 后台同步：验证登录状态 + 拉取服务器数据
   if (auth.token.value) {
     syncInBackground()
-    // 每 5 秒检查服务器变更，有变更自动拉取
-    stopSync = auth.startPolling(syncInBackground, 5000)
+    // 每 30 秒检查服务器变更，有变更自动拉取
+    stopSync = auth.startPolling(syncInBackground, 30000)
   }
 
   window.addEventListener('keydown', handleKeydown)
