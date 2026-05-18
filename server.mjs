@@ -159,12 +159,32 @@ function resHash(data) {
 
 const MAX_BODY_SIZE = 50 * 1024 * 1024
 
+// ==================== SSE 实时推送 ====================
+
+const sseClients = new Set()
+
+function broadcastVersion() {
+  const msg = `data: ${JSON.stringify({ version: appData.version })}\n\n`
+  for (const client of sseClients) {
+    try { client.write(msg) } catch { sseClients.delete(client) }
+  }
+}
+
+// 心跳保活，防止代理/负载均衡器断开空闲连接
+setInterval(() => {
+  const msg = ':heartbeat\n\n'
+  for (const client of sseClients) {
+    try { client.write(msg) } catch { sseClients.delete(client) }
+  }
+}, 30000)
+
 function logChange(op, type, id, data) {
   appData.version = (appData.version || 0) + 1
   appData.updatedAt = Date.now()
   if (!appData.changeLog) appData.changeLog = []
   appData.changeLog.push({ v: appData.version, op, type, id, data: data || null })
   saveToDiskDebounced()
+  broadcastVersion()
 }
 
 // ==================== 静态文件服务 ====================
@@ -232,6 +252,21 @@ const server = http.createServer(async (req, res) => {
     if (action === 'check-version') {
       if (!isValidToken(req)) return json(res, { error: '未登录' }, 401)
       return json(res, { version: appData.version || 0, updatedAt: appData.updatedAt || 0 })
+    }
+
+    // SSE 实时推送
+    if (action === 'events') {
+      if (!isValidToken(req)) return json(res, { error: '未登录' }, 401)
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      })
+      res.write(`data: ${JSON.stringify({ version: appData.version || 0 })}\n\n`)
+      sseClients.add(res)
+      req.on('close', () => { sseClients.delete(res) })
+      return
     }
 
     // 获取资源
