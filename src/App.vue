@@ -252,7 +252,8 @@ onMounted(async () => {
   // 后台同步：验证登录状态 + 拉取服务器数据
   if (auth.token.value) {
     syncInBackground()
-    startRealtimeSync()
+    // 每 5 秒检查服务器变更，有变更自动拉取
+    stopSync = auth.startPolling(syncInBackground, 5000)
   }
 
   window.addEventListener('keydown', handleKeydown)
@@ -296,27 +297,8 @@ async function syncInBackground() {
   }
 }
 
-/** 实时同步：SSE 推送，失败后降级为 10 秒轮询 */
+/** 定时拉取服务器变更 */
 let stopSync: (() => void) | null = null
-
-function handleRemoteChange() {
-  syncInBackground()
-}
-
-function startRealtimeSync() {
-  let sseConnected = false
-  stopSync = auth.subscribeChanges(() => {
-    sseConnected = true
-    handleRemoteChange()
-  })
-  // 3 秒后检查 SSE 是否连上，未连上则降级为轮询
-  setTimeout(() => {
-    if (!sseConnected) {
-      stopSync?.()
-      stopSync = auth.startPolling(handleRemoteChange)
-    }
-  }, 3000)
-}
 
 onUnmounted(() => {
   stopSync?.()

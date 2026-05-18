@@ -354,25 +354,10 @@ export function useAuth() {
     }
   }
 
-  // ==================== 实时同步 ====================
+  // ==================== 定时拉取 ====================
 
-  /** SSE 订阅服务器变更，返回取消订阅函数 */
-  function subscribeChanges(onChange: () => void): () => void {
-    const es = new EventSource(`${getApiBase()}/events?token=${encodeURIComponent(token.value)}`)
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.version) {
-          const cached = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
-          if (data.version > cached) onChange()
-        }
-      } catch {}
-    }
-    return () => { es.onmessage = null; es.close() }
-  }
-
-  /** 短轮询兜底：每 interval 毫秒检查一次版本 */
-  function startPolling(onChange: () => void, interval = 10000): () => void {
+  /** 每 interval 毫秒检查一次服务器版本，有变更则触发 onChange */
+  function startPolling(onChange: () => void, interval = 5000): () => void {
     const timer = setInterval(async () => {
       const sv = await checkServerVersion()
       if (sv === null) return
@@ -403,7 +388,6 @@ export function useAuth() {
     updateCategory,
     deleteCategory,
     pullChanges,
-    subscribeChanges,
     startPolling,
   }
 }
