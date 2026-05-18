@@ -37,7 +37,7 @@ const MIME = {
 /** 单密码认证: { hash, salt } | null */
 let credential = null
 /** 单个活跃 token */
-let activeToken = null
+let activeTokens = []
 /** 应用数据 */
 let appData = { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0, changeLog: [] }
 /** 资源存储 (背景图、favicon 等) */
@@ -70,7 +70,8 @@ function loadFromDisk() {
     } else {
       // 新格式
       if (data.credential) credential = data.credential
-      if (data.activeToken) activeToken = data.activeToken
+      if (data.activeTokens) activeTokens = data.activeTokens
+      else if (data.activeToken) activeTokens = [data.activeToken]
       if (data.appData) { appData = data.appData; if (!appData.changeLog) appData.changeLog = [] }
       if (data.resources) for (const [k, v] of data.resources) resources.set(k, v)
     }
@@ -90,7 +91,7 @@ function saveToDisk() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
     const data = {
       credential,
-      activeToken,
+      activeTokens,
       appData,
       resources: [...resources.entries()],
     }
@@ -145,7 +146,7 @@ function randomHex(bytes) {
 function isValidToken(req) {
   const auth = req.headers.authorization || ''
   const token = auth.replace('Bearer ', '')
-  return token && token === activeToken
+  return token && activeTokens.includes(token)
 }
 
 function resHash(data) {
@@ -293,10 +294,11 @@ const server = http.createServer(async (req, res) => {
       const salt = randomHex(16)
       const hash = hashPassword(password, salt)
       credential = { hash, salt }
-      activeToken = randomHex(32)
+      const token = randomHex(32)
+      activeTokens.push(token)
       saveToDisk()
       console.log('[设置密码] 首次密码已设置')
-      return json(res, { success: true, token: activeToken })
+      return json(res, { success: true, token })
     }
 
     // ---------- 登录 ----------
@@ -306,15 +308,18 @@ const server = http.createServer(async (req, res) => {
       if (!password) return json(res, { error: '请输入密码' }, 400)
       const hash = hashPassword(password, credential.salt)
       if (hash !== credential.hash) return json(res, { error: '密码错误' }, 401)
-      activeToken = randomHex(32)
+      const token = randomHex(32)
+      activeTokens.push(token)
       saveToDisk()
       console.log('[登录] 成功')
-      return json(res, { success: true, token: activeToken })
+      return json(res, { success: true, token })
     }
 
     // ---------- 登出 ----------
     if (action === 'logout') {
-      activeToken = null
+      const auth = req.headers.authorization || ''
+      const token = auth.replace('Bearer ', '')
+      activeTokens = activeTokens.filter(t => t !== token)
       saveToDiskDebounced()
       return json(res, { success: true })
     }
@@ -376,7 +381,7 @@ const server = http.createServer(async (req, res) => {
     // ---------- Beacon 同步 ----------
     if (action === 'sync-beacon') {
       const beaconToken = url.searchParams.get('token')
-      if (!beaconToken || beaconToken !== activeToken) {
+      if (!beaconToken || !activeTokens.includes(beaconToken)) {
         res.writeHead(204)
         return res.end()
       }

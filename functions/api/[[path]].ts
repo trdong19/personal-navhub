@@ -61,8 +61,10 @@ function generateSalt(): string {
 }
 
 async function isValidToken(token: string, env: Env): Promise<boolean> {
-  const stored = await env.NAV_KV.get('system:active_token')
-  return stored === token
+  const stored = await env.NAV_KV.get('system:active_tokens')
+  if (!stored) return false
+  const tokens: string[] = JSON.parse(stored)
+  return tokens.includes(token)
 }
 
 function getToken(req: Request): string | null {
@@ -136,7 +138,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       await env.NAV_KV.put('system:credential', JSON.stringify({ hash, salt }))
 
       const token = generateToken()
-      await env.NAV_KV.put('system:active_token', token)
+      await env.NAV_KV.put('system:active_tokens', JSON.stringify([token]))
 
       return json({ success: true, token })
     }
@@ -157,14 +159,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (hash !== cred.hash) return json({ error: '密码错误' }, 401)
 
       const token = generateToken()
-      await env.NAV_KV.put('system:active_token', token)
+      const stored = await env.NAV_KV.get('system:active_tokens')
+      const tokens: string[] = stored ? JSON.parse(stored) : []
+      tokens.push(token)
+      await env.NAV_KV.put('system:active_tokens', JSON.stringify(tokens))
 
       return json({ success: true, token })
     }
 
     // ---------- 登出 ----------
     if (action === 'logout') {
-      await env.NAV_KV.delete('system:active_token')
+      const token = getToken(context.request)
+      if (token) {
+        const stored = await env.NAV_KV.get('system:active_tokens')
+        const tokens: string[] = stored ? JSON.parse(stored) : []
+        await env.NAV_KV.put('system:active_tokens', JSON.stringify(tokens.filter(t => t !== token)))
+      }
       return json({ success: true })
     }
 
