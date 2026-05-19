@@ -718,6 +718,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             }
           }
           await env.NAV_KV.put('system:res_meta', JSON.stringify(resMeta))
+          logChange(data, 'push-resources', 'resource', 'batch', Object.keys(resMap))
           break
         }
         case 'delete-resource': {

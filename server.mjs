@@ -721,6 +721,7 @@ const server = http.createServer(async (req, res) => {
           for (const [key, val] of Object.entries(resMap)) {
             if (typeof val === 'string' && val) resources.set(key, val)
           }
+          logChange('push-resources', 'resource', 'batch', Object.keys(resMap))
           break
         }
         case 'delete-resource': {

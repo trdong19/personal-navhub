@@ -454,6 +454,8 @@ function applyChanges(changes: Array<{ op: string; type: string; id: string; dat
       settingsStore.reloadFromStorage()
     } else if (change.op === 'delete-resource' && change.type === 'resource') {
       // 壁纸删除不需要本地处理（pull 时会处理）
+    } else if (change.op === 'push-resources' && change.type === 'resource') {
+      // 资源推送不需要本地处理（pull 时会拉取）
     } else if (change.op === 'import-data') {
       // 全量导入，触发完整 pull
       navStore.reloadFromStorage()
