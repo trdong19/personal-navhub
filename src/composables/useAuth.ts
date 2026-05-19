@@ -354,19 +354,6 @@ export function useAuth() {
     }
   }
 
-  // ==================== 定时拉取 ====================
-
-  /** 每 interval 毫秒检查一次服务器版本，有变更则触发 onChange */
-  function startPolling(onChange: () => void, interval = 5000): () => void {
-    const timer = setInterval(async () => {
-      const sv = await checkServerVersion()
-      if (sv === null) return
-      const cached = parseInt(localStorage.getItem(CACHED_VERSION_KEY) || '0')
-      if (sv > cached) onChange()
-    }, interval)
-    return () => clearInterval(timer)
-  }
-
   return {
     token,
     isLoggedIn,
@@ -388,6 +375,5 @@ export function useAuth() {
     updateCategory,
     deleteCategory,
     pullChanges,
-    startPolling,
   }
 }
