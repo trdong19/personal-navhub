@@ -279,18 +279,15 @@ async function syncInBackground() {
     cachedVersion = serverVersion
   }
   if (serverVersion > cachedVersion) {
-    console.log(`[sync] 版本变更: ${cachedVersion} → ${serverVersion}`)
     const result = await auth.pullChanges()
     if (result?.fullSync) {
       // 全量同步已完成，重新加载本地数据
       navStore.reloadFromStorage()
     } else if (result && result.changes.length > 0) {
-      console.log(`[sync] 变更数量: ${result.changes.length}`, result.changes.map(c => `${c.op}/${c.type}`))
       const resolved = await resolveResources(result.changes)
       applyChanges(resolved)
       // 设置或资源变更需要 pull 同步壁纸等资源
       if (resolved.some(c => c.type === 'settings' || c.type === 'resource')) {
-        console.log('[sync] 检测到设置/资源变更，执行 pull()')
         await auth.pull()
         settingsStore.reloadFromStorage()
       }

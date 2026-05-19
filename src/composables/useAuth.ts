@@ -158,50 +158,68 @@ export function useAuth() {
       const result = await safeJson(res)
       if (!res.ok) throw new Error(result.error || '拉取失败')
       if (!result.data) {
-        console.log('[pull] 服务器返回 data: null')
         return true
       }
 
       const resourcesMeta: Record<string, string> = result.data.resourcesMeta || {}
-      console.log('[pull] resourcesMeta:', Object.keys(resourcesMeta))
 
       const localResRaw = localStorage.getItem('nav_cached_resources')
       const localRes: Record<string, string> = localResRaw ? JSON.parse(localResRaw) : {}
       const localMetaRaw = localStorage.getItem(PULL_RES_HASH_KEY)
       const localMeta: Record<string, string> = localMetaRaw ? JSON.parse(localMetaRaw) : {}
 
-      const needFetchIds: string[] = []
+      // 分离关键资源（背景图+壁纸）和非关键资源（缓存图标）
+      const criticalIds: string[] = []
+      const iconIds: string[] = []
       for (const [resId, serverHash] of Object.entries(resourcesMeta)) {
         if (localMeta[resId] !== serverHash || !localRes[resId]) {
-          needFetchIds.push(resId)
+          if (resId === 'bg' || resId.startsWith('wallpaper:')) {
+            criticalIds.push(resId)
+          } else {
+            iconIds.push(resId)
+          }
         }
       }
-      console.log('[pull] needFetchIds:', needFetchIds)
 
-      let fetchedResources: Record<string, string> = {}
-      if (needFetchIds.length > 0) {
-        // 分批拉取，每批 20 个，避免请求过大导致 500
+      // 分批拉取资源
+      async function fetchBatch(ids: string[]): Promise<Record<string, string>> {
+        const result: Record<string, string> = {}
         const BATCH_SIZE = 20
-        console.log(`[pull] 分批拉取 ${needFetchIds.length} 个资源, 每批 ${BATCH_SIZE} 个`)
-        for (let i = 0; i < needFetchIds.length; i += BATCH_SIZE) {
-          const batch = needFetchIds.slice(i, i + BATCH_SIZE)
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const batch = ids.slice(i, i + BATCH_SIZE)
           try {
-            const batchRes = await fetch(`${getApiBase()}/pull-resources`, {
+            const res = await fetch(`${getApiBase()}/pull-resources`, {
               method: 'POST',
               headers: headers(),
               body: JSON.stringify({ ids: batch }),
             })
-            if (batchRes.ok) {
-              const batchData = await safeJson(batchRes)
-              Object.assign(fetchedResources, batchData.resources || {})
-            } else {
-              console.log(`[pull] 批次 ${i / BATCH_SIZE + 1} 失败:`, batchRes.status)
+            if (res.ok) {
+              const data = await safeJson(res)
+              Object.assign(result, data.resources || {})
             }
-          } catch (e) {
-            console.log(`[pull] 批次 ${i / BATCH_SIZE + 1} 异常:`, e)
-          }
+          } catch {}
         }
-        console.log('[pull] fetchedResources 总数:', Object.keys(fetchedResources).length)
+        return result
+      }
+
+      // 先拉关键资源（背景图+壁纸），阻塞等待
+      let fetchedResources: Record<string, string> = {}
+      if (criticalIds.length > 0) {
+        fetchedResources = await fetchBatch(criticalIds)
+      }
+
+      // 图标后台拉取，不阻塞 UI
+      if (iconIds.length > 0) {
+        fetchBatch(iconIds).then(iconRes => {
+          const mergedLocalRes: Record<string, string> = JSON.parse(localStorage.getItem('nav_cached_resources') || '{}')
+          Object.assign(mergedLocalRes, iconRes)
+          safeSetItem('nav_cached_resources', JSON.stringify(mergedLocalRes))
+          const mergedMeta: Record<string, string> = JSON.parse(localStorage.getItem(PULL_RES_HASH_KEY) || '{}')
+          for (const id of Object.keys(iconRes)) {
+            if (resourcesMeta[id]) mergedMeta[id] = resourcesMeta[id]
+          }
+          safeSetItem(PULL_RES_HASH_KEY, JSON.stringify(mergedMeta))
+        }).catch(() => {})
       }
 
       const resources: Record<string, string> = {}
@@ -253,15 +271,11 @@ export function useAuth() {
       }
 
       if (resources['bg']) {
-        console.log('[pull] 保存背景图, 长度:', resources['bg'].length)
         try {
           await saveBgImage(resources['bg'])
-        } catch (e) {
-          console.log('[pull] saveBgImage 失败, 用 localStorage 兜底:', e)
+        } catch {
           try { localStorage.setItem('nav_local_bg_image', resources['bg']) } catch {}
         }
-      } else {
-        console.log('[pull] resources 中没有 bg')
       }
 
       // 合并服务器的删除列表到本地
@@ -272,8 +286,6 @@ export function useAuth() {
         localStorage.setItem('nav_deleted_bg_images', JSON.stringify(mergedDeleted))
       }
 
-      const wallpaperKeys = Object.keys(resources).filter(k => k.startsWith('wallpaper:'))
-      console.log('[pull] wallpaper 资源:', wallpaperKeys)
       for (const [key, dataUrl] of Object.entries(resources)) {
         if (key === 'bg' || key.startsWith('icon_') || key.startsWith('cachedicon_')) continue
         if (key.startsWith('wallpaper:') && typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
@@ -283,8 +295,7 @@ export function useAuth() {
             const res = await fetch(dataUrl)
             const blob = await res.blob()
             await saveFile({ id: fileId, name: fileId, type: blob.type || 'image/jpeg', category: 'wallpaper', blob })
-            console.log('[pull] 壁纸保存成功:', fileId)
-          } catch (e) { console.log('[pull] 壁纸保存失败:', key, e) }
+          } catch {}
         }
       }
 
