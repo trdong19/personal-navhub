@@ -158,10 +158,12 @@ export function useAuth() {
       const result = await safeJson(res)
       if (!res.ok) throw new Error(result.error || '拉取失败')
       if (!result.data) {
+        console.log('[pull] 服务器返回 data: null')
         return true
       }
 
       const resourcesMeta: Record<string, string> = result.data.resourcesMeta || {}
+      console.log('[pull] resourcesMeta:', Object.keys(resourcesMeta))
 
       const localResRaw = localStorage.getItem('nav_cached_resources')
       const localRes: Record<string, string> = localResRaw ? JSON.parse(localResRaw) : {}
@@ -174,9 +176,11 @@ export function useAuth() {
           needFetchIds.push(resId)
         }
       }
+      console.log('[pull] needFetchIds:', needFetchIds)
 
       let fetchedResources: Record<string, string> = {}
       if (needFetchIds.length > 0) {
+        console.log('[pull] 调用 /pull-resources')
         const batchRes = await fetch(`${getApiBase()}/pull-resources`, {
           method: 'POST',
           headers: headers(),
@@ -185,6 +189,9 @@ export function useAuth() {
         if (batchRes.ok) {
           const batchData = await safeJson(batchRes)
           fetchedResources = batchData.resources || {}
+          console.log('[pull] fetchedResources keys:', Object.keys(fetchedResources))
+        } else {
+          console.log('[pull] /pull-resources 失败:', batchRes.status)
         }
       }
 
@@ -237,11 +244,15 @@ export function useAuth() {
       }
 
       if (resources['bg']) {
+        console.log('[pull] 保存背景图, 长度:', resources['bg'].length)
         try {
           await saveBgImage(resources['bg'])
-        } catch {
+        } catch (e) {
+          console.log('[pull] saveBgImage 失败, 用 localStorage 兜底:', e)
           try { localStorage.setItem('nav_local_bg_image', resources['bg']) } catch {}
         }
+      } else {
+        console.log('[pull] resources 中没有 bg')
       }
 
       // 合并服务器的删除列表到本地
@@ -252,6 +263,8 @@ export function useAuth() {
         localStorage.setItem('nav_deleted_bg_images', JSON.stringify(mergedDeleted))
       }
 
+      const wallpaperKeys = Object.keys(resources).filter(k => k.startsWith('wallpaper:'))
+      console.log('[pull] wallpaper 资源:', wallpaperKeys)
       for (const [key, dataUrl] of Object.entries(resources)) {
         if (key === 'bg' || key.startsWith('icon_') || key.startsWith('cachedicon_')) continue
         if (key.startsWith('wallpaper:') && typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
@@ -261,7 +274,8 @@ export function useAuth() {
             const res = await fetch(dataUrl)
             const blob = await res.blob()
             await saveFile({ id: fileId, name: fileId, type: blob.type || 'image/jpeg', category: 'wallpaper', blob })
-          } catch {}
+            console.log('[pull] 壁纸保存成功:', fileId)
+          } catch (e) { console.log('[pull] 壁纸保存失败:', key, e) }
         }
       }
 
