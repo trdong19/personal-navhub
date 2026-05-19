@@ -1,12 +1,12 @@
 # NavHub
 
-个人导航主页 — 书签管理、分类整理、主题自定义、多用户同步。
+个人导航主页 — 书签管理、分类整理、主题自定义、多设备同步。
 
 ## 功能
 
 **书签管理**
 - 添加、编辑、删除书签，支持内网 / 外网 / 隧道三地址
-- 多级分类（主分类 → 子分类 → 孙分类），支持拖拽排序
+- 分类整理，支持拖拽排序
 - FLIP 动画：拖拽时周围卡片自动让位回填
 - 一键导入浏览器 HTML 书签文件
 - 自动获取并缓存网站 Favicon
@@ -29,10 +29,11 @@
 - 分类白框开关、书签描述显示开关
 - 右下角工具栏：可拖拽排序、隐藏 / 显示按钮
 
-**多用户**
-- 注册登录，数据自动同步到服务器
-- 版本冲突检测，多设备同时编辑不丢失
-- 管理员面板：用户管理、注册控制、系统状态
+**多设备同步**
+- 单密码认证，多设备同时在线
+- 增量同步：每次操作（添加链接、修改设置、上传壁纸）独立同步到服务器
+- 刷新页面或切回标签页时自动拉取最新数据
+- 资源分级拉取：背景图 / 壁纸优先同步，图标后台异步加载
 
 **内网 / 外网**
 - 每个书签支持内网、外网、隧道三个地址
@@ -50,8 +51,8 @@
 | 前端 | Vue 3 + TypeScript + Pinia |
 | 构建 | Vite |
 | 动画 | animejs (WAAPI) |
-| 后端 | Node.js 原生 HTTP |
-| 存储 | localStorage + IndexedDB + JSON 文件 |
+| 后端 | Node.js 原生 HTTP / Cloudflare Pages Functions |
+| 存储 | localStorage + IndexedDB + JSON 文件（或 KV） |
 | 加密 | PBKDF2 (SHA-256, 100000 iterations) |
 | 部署 | Docker / Cloudflare Pages / 本地 |
 
@@ -63,6 +64,8 @@ npm run server   # 启动后端 http://localhost:8888
 npm run dev      # 启动前端 http://localhost:5173
 ```
 
+访问 `http://localhost:8888`，首次打开设置密码即可开始使用。
+
 ## 部署
 
 ### Docker（推荐）
@@ -71,9 +74,9 @@ npm run dev      # 启动前端 http://localhost:5173
 docker compose up -d
 ```
 
-访问 `http://localhost:8888`，**第一个注册的用户自动成为管理员**。
+访问 `http://localhost:8888`，首次打开设置密码即可使用。
 
-数据持久化在 `./data` 目录。
+数据持久化在 `./data` 目录。Docker 镜像通过 GitHub Actions 自动构建并推送到 `ghcr.io`。
 
 ### 本地生产部署
 
@@ -82,8 +85,6 @@ npm install
 npm run build
 PORT=8888 node server.mjs
 ```
-
-访问 `http://localhost:8888`，**第一个注册的用户自动成为管理员**。
 
 ### Nginx 反向代理
 
@@ -109,7 +110,7 @@ server {
 2. 在 Cloudflare Dashboard 创建 Pages 项目，关联你的仓库
 3. 构建命令：`npm run build`，输出目录：`dist`
 4. 创建 KV 命名空间 `NAV_KV`，绑定到 Pages 项目
-5. 重新部署，访问你的 `*.pages.dev` 域名注册管理员账号
+5. 重新部署，访问你的 `*.pages.dev` 域名设置密码即可使用
 
 ## 环境变量
 
@@ -124,17 +125,18 @@ server {
 ├── server.mjs              # 后端 API + 静态文件服务
 ├── functions/api/          # Cloudflare Pages Functions
 ├── src/
-│   ├── App.vue             # 根组件
+│   ├── App.vue             # 根组件 + 增量同步调度
 │   ├── components/
 │   │   ├── layout/         # AppHeader
 │   │   ├── navigation/     # NavCard, CategorySection, SearchBar 等
 │   │   ├── settings/       # SettingsPanel, FileManager
 │   │   └── common/         # Toast, ConfirmDialog, ContextMenu
-│   ├── composables/        # useAuth, useAnimation, useFlipSort
+│   ├── composables/        # useAuth（认证 + 同步）, useAnimation, useFlipSort
 │   ├── stores/             # nav, settings, network (Pinia)
 │   ├── styles/             # global.css
 │   ├── types/              # TypeScript 类型
 │   └── utils/              # defaults, fileStore, helpers, storage
+├── .github/workflows/      # Docker 镜像自动构建
 ├── Dockerfile
 ├── docker-compose.yml
 └── wrangler.toml           # Cloudflare Pages 配置（需自行创建）
