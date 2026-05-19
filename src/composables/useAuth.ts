@@ -180,19 +180,28 @@ export function useAuth() {
 
       let fetchedResources: Record<string, string> = {}
       if (needFetchIds.length > 0) {
-        console.log('[pull] 调用 /pull-resources')
-        const batchRes = await fetch(`${getApiBase()}/pull-resources`, {
-          method: 'POST',
-          headers: headers(),
-          body: JSON.stringify({ ids: needFetchIds }),
-        })
-        if (batchRes.ok) {
-          const batchData = await safeJson(batchRes)
-          fetchedResources = batchData.resources || {}
-          console.log('[pull] fetchedResources keys:', Object.keys(fetchedResources))
-        } else {
-          console.log('[pull] /pull-resources 失败:', batchRes.status)
+        // 分批拉取，每批 20 个，避免请求过大导致 500
+        const BATCH_SIZE = 20
+        console.log(`[pull] 分批拉取 ${needFetchIds.length} 个资源, 每批 ${BATCH_SIZE} 个`)
+        for (let i = 0; i < needFetchIds.length; i += BATCH_SIZE) {
+          const batch = needFetchIds.slice(i, i + BATCH_SIZE)
+          try {
+            const batchRes = await fetch(`${getApiBase()}/pull-resources`, {
+              method: 'POST',
+              headers: headers(),
+              body: JSON.stringify({ ids: batch }),
+            })
+            if (batchRes.ok) {
+              const batchData = await safeJson(batchRes)
+              Object.assign(fetchedResources, batchData.resources || {})
+            } else {
+              console.log(`[pull] 批次 ${i / BATCH_SIZE + 1} 失败:`, batchRes.status)
+            }
+          } catch (e) {
+            console.log(`[pull] 批次 ${i / BATCH_SIZE + 1} 异常:`, e)
+          }
         }
+        console.log('[pull] fetchedResources 总数:', Object.keys(fetchedResources).length)
       }
 
       const resources: Record<string, string> = {}
