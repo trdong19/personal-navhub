@@ -1,6 +1,8 @@
 # NavHub
 
-个人导航主页 — 书签管理、分类整理、主题自定义、多设备同步。
+个人导航主页 — 书签管理、分类整理、动物森友会风格 UI、多设备同步。
+
+UI 灵感来自 [animal-island-ui](https://github.com/guokaigdg/animal-island-ui)。
 
 ## 功能
 
@@ -18,14 +20,13 @@
 - 多搜索引擎切换（Bing / 百度 / GitHub / DuckDuckGo / 自定义）
 
 **主题**
-- 浅色 / 深色 / 跟随系统
-- 自定义主色、圆角、背景图、背景色
-- 毛玻璃、背景模糊、遮罩透明度
-- 搜索框 / 书签卡片 / 全局字体颜色与透明度独立调整
+- 浅色 / 深色 / 跟随系统（锁定动森暖色调风格）
+- 自定义背景图（支持 URL / 本地上传 / 预设壁纸）
+- 背景模糊、遮罩透明度
 
 **布局**
 - 单列 / 双列分类布局
-- 卡片尺寸（小 / 中 / 大）
+- 卡片尺寸（极小 / 小 / 中 / 大）
 - 分类白框开关、书签描述显示开关
 - 右下角工具栏：可拖拽排序、隐藏 / 显示按钮
 
@@ -50,7 +51,7 @@
 |------|------|
 | 前端 | Vue 3 + TypeScript + Pinia |
 | 构建 | Vite |
-| 动画 | animejs (WAAPI) |
+| 字体 | Nunito + Noto Sans SC |
 | 后端 | Node.js 原生 HTTP / Cloudflare Pages Functions |
 | 存储 | localStorage + IndexedDB + JSON 文件（或 KV） |
 | 加密 | PBKDF2 (SHA-256, 100000 iterations) |
