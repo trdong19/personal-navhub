@@ -199,7 +199,7 @@ onMounted(loadFiles)
   position: fixed;
   inset: 0;
   z-index: 5500;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(61, 52, 40, 0.45);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -214,8 +214,8 @@ onMounted(loadFiles)
   max-height: 85vh;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -312,7 +312,7 @@ onMounted(loadFiles)
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: 50px;
   background: var(--primary);
   color: white;
   font-size: 13px;
@@ -348,7 +348,7 @@ onMounted(loadFiles)
 
 .fm-item:hover {
   border-color: var(--primary);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12);
+  box-shadow: 0 4px 16px rgba(25, 200, 185, 0.12);
   transform: translateY(-2px);
 }
 
@@ -373,7 +373,7 @@ onMounted(loadFiles)
 .fm-item-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(61, 52, 40, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -390,7 +390,7 @@ onMounted(loadFiles)
   font-size: 12px;
   font-weight: 500;
   padding: 4px 12px;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(61, 52, 40, 0.45);
   border-radius: 6px;
 }
 
@@ -440,7 +440,7 @@ onMounted(loadFiles)
 }
 
 .fm-action-wallpaper:hover {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(25, 200, 185, 0.1);
   color: var(--primary);
 }
 

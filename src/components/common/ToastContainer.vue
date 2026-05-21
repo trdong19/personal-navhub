@@ -8,7 +8,7 @@ const iconMap: Record<string, string> = {
   success: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
   error: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
   warning: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
-  info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#19c8b9" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
 }
 </script>
 
@@ -53,7 +53,7 @@ const iconMap: Record<string, string> = {
   border-radius: 50px; /* 胶囊形状更可爱 */
   background: var(--bg-card);
   border: none;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 20px rgba(61, 52, 40, 0.08), 0 0 0 1px rgba(61, 52, 40, 0.04);
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
@@ -68,7 +68,7 @@ const iconMap: Record<string, string> = {
 
 .toast-item:hover {
   transform: scale(1.02);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 6px 24px rgba(61, 52, 40, 0.12), 0 0 0 1px rgba(61, 52, 40, 0.06);
 }
 
 .toast-item.success {
@@ -87,8 +87,8 @@ const iconMap: Record<string, string> = {
 }
 
 .toast-item.info {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0.04) 100%);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15), 0 0 0 1px rgba(99, 102, 241, 0.1);
+  background: linear-gradient(135deg, rgba(25, 200, 185, 0.12) 0%, rgba(25, 200, 185, 0.04) 100%);
+  box-shadow: 0 4px 20px rgba(25, 200, 185, 0.15), 0 0 0 1px rgba(25, 200, 185, 0.1);
 }
 
 /* 暗色模式 */
@@ -109,7 +109,7 @@ html.dark .toast-item.warning {
 }
 
 html.dark .toast-item.info {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(99, 102, 241, 0.08) 100%);
+  background: linear-gradient(135deg, rgba(25, 200, 185, 0.2) 0%, rgba(25, 200, 185, 0.08) 100%);
 }
 
 .toast-icon {

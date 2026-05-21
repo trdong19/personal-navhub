@@ -151,7 +151,7 @@ function confirmAddCategory() {
     toast.warning('分类名称已存在')
     return
   }
-  navStore.addCategory(name, '📁', '#6366f1')
+  navStore.addCategory(name, '📁', '#19c8b9')
   showAddCategoryModal.value = false
   newCatName.value = ''
 }
@@ -836,17 +836,16 @@ async function handleRefreshIcons() {
 }
 
 .main-content {
-  padding: 0 24px 40px;
+  padding: 0 24px 48px;
 }
 
 .content-wrapper {
-  /* 优化内容最大宽度，提升阅读体验 */
   max-width: 1200px;
   margin: 0 auto;
-  padding-top: 24px;
+  padding-top: 28px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 36px;
 }
 
 .search-wrapper {
@@ -856,12 +855,12 @@ async function handleRefreshIcons() {
 
 .floating-controls {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 24px;
+  right: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   z-index: 90;
 }
 
@@ -869,13 +868,13 @@ async function handleRefreshIcons() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--bg-card);
   border: none;
   color: var(--text-secondary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(61, 52, 40, 0.08);
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -884,8 +883,14 @@ async function handleRefreshIcons() {
   background: var(--primary);
   color: white;
   border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.3);
   transform: translateY(-2px);
+}
+
+.float-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(61, 52, 40, 0.12);
+  transition-duration: 0.1s;
 }
 
 .expand-collapse-group {
@@ -930,7 +935,7 @@ async function handleRefreshIcons() {
   right: 0;
   background: var(--bg-card);
   border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 32px rgba(61, 52, 40, 0.12);
   min-width: 180px;
   padding: 4px;
   z-index: 200;
@@ -1007,13 +1012,13 @@ async function handleRefreshIcons() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--bg-card);
   border: none;
   color: var(--text-secondary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(61, 52, 40, 0.08);
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 92;
@@ -1023,14 +1028,14 @@ async function handleRefreshIcons() {
   background: var(--primary);
   color: white;
   border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.3);
   transform: translateY(-2px);
 }
 
 .fab-open .fab-main {
   background: var(--primary);
   color: white;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.3);
 }
 
 .fab-icon {
@@ -1052,7 +1057,7 @@ async function handleRefreshIcons() {
   color: var(--text);
   font-size: 12px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(61, 52, 40, 0.08);
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1062,8 +1067,14 @@ async function handleRefreshIcons() {
   background: var(--primary);
   color: white;
   border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.3);
   transform: translateX(-4px);
+}
+
+.fab-option:active {
+  transform: translateX(-2px) translateY(1px);
+  box-shadow: 0 1px 4px rgba(61, 52, 40, 0.12);
+  transition-duration: 0.1s;
 }
 
 .fab-option svg {
@@ -1097,7 +1108,7 @@ async function handleRefreshIcons() {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(61, 52, 40, 0.15);
 }
 
 .fade-enter-active,
@@ -1158,7 +1169,7 @@ async function handleRefreshIcons() {
   padding: 10px 24px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(61, 52, 40, 0.1);
 }
 
 .batch-info {
@@ -1190,12 +1201,12 @@ async function handleRefreshIcons() {
 .range-select-btn {
   padding: 4px 10px;
   border-radius: 6px;
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(25, 200, 185, 0.1);
   text-decoration: none;
 }
 
 .range-select-btn:hover {
-  background: rgba(99, 102, 241, 0.2);
+  background: rgba(25, 200, 185, 0.2);
 }
 
 .range-select-btn.active {
@@ -1279,7 +1290,7 @@ async function handleRefreshIcons() {
 }
 
 .add-cat-input:focus {
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px rgba(25, 200, 185, 0.15);
 }
 
 .tools-panel {
@@ -1299,7 +1310,7 @@ async function handleRefreshIcons() {
   background: var(--primary);
   opacity: 0.85;
   transform: translateY(-2px);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 14px rgba(25, 200, 185, 0.4);
 }
 
 .tools-toggle-btn.expanded {
@@ -1344,7 +1355,7 @@ async function handleRefreshIcons() {
 .filter-btn.active {
   background: var(--primary);
   color: white;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.3);
 }
 
 .filter-panel {
@@ -1353,7 +1364,7 @@ async function handleRefreshIcons() {
   right: calc(100% + 10px);
   background: var(--bg-card);
   border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 32px rgba(61, 52, 40, 0.12);
   min-width: 190px;
   padding: 8px 4px;
   z-index: 200;
@@ -1501,13 +1512,13 @@ async function handleRefreshIcons() {
   }
 
   .float-btn {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
   }
 
   .fab-main {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
   }
 
   .fab-option {

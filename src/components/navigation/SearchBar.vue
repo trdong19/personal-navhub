@@ -262,19 +262,18 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: none;
-  /* 搜索栏圆角跟随全局设置 */
-  border-radius: var(--radius);
+  border-radius: 50px;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-bottom-input);
 }
 
 .search-bar:hover {
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 20px rgba(25, 200, 185, 0.15);
   transform: translateY(-2px);
 }
 
 .search-bar:focus-within {
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12), 0 6px 24px rgba(99, 102, 241, 0.18);
+  box-shadow: 0 0 0 3px rgba(25, 200, 185, 0.12), 0 6px 24px rgba(25, 200, 185, 0.18);
   transform: translateY(-2px);
 }
 
@@ -314,8 +313,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  color: var(--primary, #6366f1);
-  background: var(--primary-light, rgba(99, 102, 241, 0.12));
+  color: var(--primary, #19c8b9);
+  background: var(--primary-light, rgba(25, 200, 185, 0.12));
   border-radius: 3px;
   flex-shrink: 0;
   line-height: 1;
@@ -329,7 +328,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   border: none;
   /* 搜索引擎下拉菜单圆角 */
   border-radius: calc(var(--radius) - 2px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 32px rgba(61, 52, 40, 0.12);
   min-width: 180px;
   padding: 4px;
   z-index: 300;
@@ -365,8 +364,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   justify-content: center;
   font-size: 11px;
   font-weight: 700;
-  color: var(--primary, #6366f1);
-  background: var(--primary-light, rgba(99, 102, 241, 0.12));
+  color: var(--primary, #19c8b9);
+  background: var(--primary-light, rgba(25, 200, 185, 0.12));
   border-radius: 3px;
   flex-shrink: 0;
   line-height: 1;
@@ -421,7 +420,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   border: none;
   /* 搜索建议下拉圆角 */
   border-radius: calc(var(--radius) - 2px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 32px rgba(61, 52, 40, 0.12);
   max-height: 360px;
   overflow-y: auto;
   z-index: 300;

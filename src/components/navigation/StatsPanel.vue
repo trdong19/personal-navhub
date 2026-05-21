@@ -194,7 +194,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
 .stats-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(61, 52, 40, 0.45);
   backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
@@ -208,8 +208,8 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
   max-width: 650px;
   max-height: 90vh;
   background: var(--bg-card);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -246,7 +246,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 50%;
   color: var(--text-muted);
   transition: all var(--transition);
 }
@@ -511,7 +511,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
 
 .cat-stat-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), #818cf8);
+  background: linear-gradient(90deg, var(--primary), #5de8da);
   border-radius: 4px;
   transition: width 0.5s ease;
   min-width: 2px;

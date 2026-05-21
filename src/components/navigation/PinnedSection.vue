@@ -231,7 +231,7 @@ const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
 }
 
 .section-title {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   font-size: 18px;
@@ -239,6 +239,13 @@ const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
   color: var(--text);
   cursor: pointer;
   user-select: none;
+  padding: 6px 14px 6px 8px;
+  border-radius: 50px;
+  transition: background 0.2s ease;
+}
+
+.section-title:hover {
+  background: var(--bg-hover);
 }
 
 .collapse-icon {
@@ -271,8 +278,8 @@ const deleteLinkTarget = ref<{ id: string; title: string } | null>(null)
 
 .nav-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
 }
 
 @media (max-width: 768px) {

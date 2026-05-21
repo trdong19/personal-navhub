@@ -220,8 +220,8 @@ onMounted(() => {
 .search-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(61, 52, 40, 0.45);
+  backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
   align-items: flex-start;
@@ -234,7 +234,7 @@ onMounted(() => {
   max-width: 600px;
   background: var(--bg-card);
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.25);
   overflow: hidden;
   animation: slideIn 0.2s ease-out;
 }
@@ -385,13 +385,13 @@ onMounted(() => {
   font-size: 13px;
   color: var(--primary);
   padding: 8px 16px;
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(25, 200, 185, 0.1);
   border-radius: 8px;
   cursor: pointer;
 }
 
 .search-engine-hint:hover {
-  background: rgba(99, 102, 241, 0.2);
+  background: rgba(25, 200, 185, 0.2);
 }
 
 .search-tips {

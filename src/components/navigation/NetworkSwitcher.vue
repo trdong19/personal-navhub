@@ -39,7 +39,7 @@ function toggle() {
   cursor: pointer;
   border: none;
   outline: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(61, 52, 40, 0.08);
   background: var(--bg-card);
 }
 

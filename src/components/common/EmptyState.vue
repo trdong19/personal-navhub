@@ -175,7 +175,7 @@ const emit = defineEmits<{
   align-items: center;
   gap: 8px;
   padding: 11px 22px;
-  border-radius: 12px;
+  border-radius: 50px;
   font-size: 14px;
   font-weight: 500;
   border: 1px solid var(--border);
@@ -183,37 +183,37 @@ const emit = defineEmits<{
   color: var(--text);
   cursor: pointer;
   transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(61, 52, 40, 0.06);
 }
 
 .empty-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12);
+  box-shadow: 0 4px 16px rgba(25, 200, 185, 0.12);
 }
 
 .empty-btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(61, 52, 40, 0.06);
 }
 
 .empty-btn.primary {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark, var(--primary)));
   color: white;
   border-color: transparent;
-  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-bottom);
 }
 
 .empty-btn.primary:hover {
   color: white;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 6px 20px rgba(25, 200, 185, 0.35);
 }
 
 .empty-btn.primary:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 2px 8px rgba(25, 200, 185, 0.2);
 }
 
 /* ---- 提示列表 ---- */
@@ -249,7 +249,7 @@ const emit = defineEmits<{
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(25, 200, 185, 0.08);
   color: var(--primary);
 }
 
@@ -262,7 +262,7 @@ kbd {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 5px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 1px rgba(61, 52, 40, 0.06);
   line-height: 1.4;
 }
 

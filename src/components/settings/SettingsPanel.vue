@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuth } from '@/composables/useAuth'
@@ -35,7 +35,7 @@ function handleCatTouchStart(e: TouchEvent, catId: string) {
     z-index: 9999;
     opacity: 0.85;
     transform: rotate(1deg) scale(1.03);
-    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 8px 32px rgba(25, 200, 185, 0.3);
     border-radius: 10px;
     pointer-events: none;
     transition: none;
@@ -104,14 +104,15 @@ function handleCatDocTouchEnd() {
 
   // 如果有拖放目标，执行排序
   if (touchCatDragId && touchCatDropTargetId && touchCatDragId !== touchCatDropTargetId) {
+    const container = categorySortListRef.value
     const sorted = [...navStore.sortedCategories]
     const ids = sorted.map(c => c.id)
     const fromIdx = ids.indexOf(touchCatDragId)
     const toIdx = ids.indexOf(touchCatDropTargetId)
-    if (fromIdx !== -1 && toIdx !== -1) {
+    if (fromIdx !== -1 && toIdx !== -1 && container) {
       ids.splice(fromIdx, 1)
       ids.splice(toIdx, 0, touchCatDragId)
-      navStore.reorderCategories(ids)
+      flipAnimate(container, '.category-sort-item', 'catId', touchCatDragId, () => navStore.reorderCategories(ids))
     }
   }
 
@@ -160,11 +161,11 @@ const toast = useToast()
 const activeTab = ref<'theme' | 'layout' | 'search' | 'data' | 'account'>('theme')
 
 const tabs = [
-  { id: 'theme', name: '主题', icon: '🎨' },
-  { id: 'layout', name: '布局', icon: '📐' },
-  { id: 'search', name: '搜索', icon: '🔍' },
-  { id: 'data', name: '数据', icon: '💾' },
-  { id: 'account', name: '账户', icon: '👤' },
+  { id: 'theme', name: '主题', icon: '/assets/icons/icon-design.svg' },
+  { id: 'layout', name: '布局', icon: '/assets/icons/icon-map.svg' },
+  { id: 'search', name: '搜索', icon: '/assets/icons/icon-critterpedia.svg' },
+  { id: 'data', name: '数据', icon: '/assets/icons/icon-miles.svg' },
+  { id: 'account', name: '账户', icon: '/assets/icons/icon-chat.svg' },
 ] as const
 
 const showPasswordForm = ref(false)
@@ -199,6 +200,7 @@ const showFileManager = ref(false)
 const showCatSortModal = ref(false)
 
 const toolbarDragId = ref<ToolbarButtonId | null>(null)
+const toolbarManageListRef = ref<HTMLElement | null>(null)
 const toolbarDropTarget = ref<ToolbarButtonId | null>(null)
 
 const toolbarLabelMap: Record<ToolbarButtonId, string> = {
@@ -228,14 +230,16 @@ function handleToolbarDragOver(e: DragEvent, targetId: ToolbarButtonId) {
 function handleToolbarDrop(e: DragEvent, targetId: ToolbarButtonId) {
   e.preventDefault()
   if (!toolbarDragId.value || toolbarDragId.value === targetId) return
+  const movedId = toolbarDragId.value
+  const container = toolbarManageListRef.value
   const toolbar = settingsStore.getToolbar()
   const ids = toolbar.map(b => b.id)
-  const fromIdx = ids.indexOf(toolbarDragId.value)
+  const fromIdx = ids.indexOf(movedId)
   const toIdx = ids.indexOf(targetId)
-  if (fromIdx === -1 || toIdx === -1) return
+  if (fromIdx === -1 || toIdx === -1 || !container) return
   ids.splice(fromIdx, 1)
-  ids.splice(toIdx, 0, toolbarDragId.value)
-  settingsStore.reorderToolbar(ids)
+  ids.splice(toIdx, 0, movedId)
+  flipAnimate(container, '.toolbar-manage-item', 'btnId', movedId, () => settingsStore.reorderToolbar(ids))
   toolbarDragId.value = null
   toolbarDropTarget.value = null
 }
@@ -272,7 +276,7 @@ function handleToolbarTouchStart(e: TouchEvent, id: ToolbarButtonId) {
     z-index: 9999;
     opacity: 0.85;
     transform: rotate(1deg) scale(1.03);
-    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 8px 32px rgba(25, 200, 185, 0.3);
     border-radius: 10px;
     pointer-events: none;
     transition: none;
@@ -318,14 +322,15 @@ function handleTbDocTouchEnd() {
   touchTbDragging = false
 
   if (touchTbDragId && touchTbDropTargetId && touchTbDragId !== touchTbDropTargetId) {
+    const container = toolbarManageListRef.value
     const toolbar = settingsStore.getToolbar()
     const ids = toolbar.map(b => b.id)
     const fromIdx = ids.indexOf(touchTbDragId)
     const toIdx = ids.indexOf(touchTbDropTargetId)
-    if (fromIdx !== -1 && toIdx !== -1) {
+    if (fromIdx !== -1 && toIdx !== -1 && container) {
       ids.splice(fromIdx, 1)
       ids.splice(toIdx, 0, touchTbDragId)
-      settingsStore.reorderToolbar(ids)
+      flipAnimate(container, '.toolbar-manage-item', 'btnId', touchTbDragId, () => settingsStore.reorderToolbar(ids))
     }
   }
 
@@ -364,6 +369,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.body.style.overflow = ''
   document.documentElement.style.overflow = ''
+  document.body.classList.remove('is-dragging')
   document.removeEventListener('touchmove', handleCatDocTouchMove)
   document.removeEventListener('touchend', handleCatDocTouchEnd)
   document.removeEventListener('touchcancel', handleCatDocTouchEnd)
@@ -372,6 +378,9 @@ onUnmounted(() => {
   document.removeEventListener('touchend', handleTbDocTouchEnd)
   document.removeEventListener('touchcancel', handleTbDocTouchEnd)
   if (touchTbClone) { touchTbClone.remove(); touchTbClone = null }
+  draggingCatId.value = null
+  toolbarDragId.value = null
+  toolbarDropTarget.value = null
 })
 
 function handleFileManagerSelect(dataUrl: string) {
@@ -391,37 +400,13 @@ function handleFileManagerDelete(id: string) {
   auth.incrementalSync('delete-resource', { resourceId: 'wallpaper:' + id }).catch(() => {})
 }
 
-const themeColors = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
-  '#ec4899', '#f43f5e', '#ef4444', '#f97316',
-  '#f59e0b', '#eab308', '#84cc16', '#22c55e',
-  '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
-  '#3b82f6', '#6366f1',
-]
-
-const bgColors = [
-  '#f8fafc', '#f1f5f9', '#e2e8f0', '#fce7f3',
-  '#fdf2f8', '#fae8ff', '#f3e8ff', '#ede9fe',
-  '#e0e7ff', '#dbeafe', '#e0f2fe', '#ccfbf1',
-  '#d1fae5', '#ecfccb', '#fef9c3', '#fef3c7',
-  '#0f172a', '#1e293b', '#334155', '#1a1a2e',
-]
-
-const showCustomColorInput = ref(false)
-const showCustomBgInput = ref(false)
-const showCustomTextColorInput = ref(false)
-const showCustomSearchColor = ref(false)
-const showCustomCardColor = ref(false)
-const showColorStyles = ref(false)
-
-const textColors = [
-  '#0f172a', '#1e293b', '#334155', '#475569',
-  '#64748b', '#94a3b8', '#f1f5f9', '#ffffff',
-  '#6366f1', '#8b5cf6', '#ec4899', '#ef4444',
-  '#f59e0b', '#22c55e', '#3b82f6', '#14b8a6',
-]
-
 const effectiveBgImage = computed(() => settingsStore.effectiveBgImage)
+
+const presetBgs = [
+  { name: '草地', url: '/assets/bg/content_bg_pc.jpg' },
+  { name: '小岛', url: '/assets/bg/home_bg.webp' },
+  { name: '木纹', url: '/assets/bg/menu_bg.png' },
+]
 
 const showEngineForm = ref(false)
 const editingEngineId = ref<string | null>(null)
@@ -618,7 +603,7 @@ function confirmBookmarkImport() {
   for (const catName of catSet) {
     const existing = navStore.categories.find(c => c.name === catName)
     if (!existing) {
-      navStore.addCategory(catName, '📁', '#6366f1')
+      navStore.addCategory(catName, '📁', '#19c8b9')
     }
   }
   let imported = 0
@@ -673,6 +658,48 @@ const draggingCatId = ref<string | null>(null)
 const catDropTargetId = ref<string | null>(null)
 const categorySortListRef = ref<HTMLElement | null>(null)
 
+/** FLIP 动画：记录位置 → 回调重排 → 同帧动画过渡 */
+function flipAnimate(
+  container: HTMLElement,
+  selector: string,
+  dataAttr: string,
+  movedId: string,
+  reorder: () => void
+) {
+  // 1. 记录旧位置
+  const items = container.querySelectorAll<HTMLElement>(selector)
+  const positions = new Map<string, DOMRect>()
+  items.forEach(item => {
+    const id = item.dataset[dataAttr]
+    if (id) positions.set(id, item.getBoundingClientRect())
+  })
+
+  // 2. 执行重排（触发 Vue 更新）
+  reorder()
+
+  // 3. 等 DOM 更新后同帧执行动画
+  nextTick(() => {
+    const newItems = container.querySelectorAll<HTMLElement>(selector)
+    newItems.forEach(item => {
+      const id = item.dataset[dataAttr]
+      if (!id || id === movedId) return
+      const oldRect = positions.get(id)
+      if (!oldRect) return
+      const newRect = item.getBoundingClientRect()
+      const dy = oldRect.top - newRect.top
+      if (Math.abs(dy) < 5) return
+      // 先跳到旧位置，再动画到新位置
+      item.animate(
+        [
+          { transform: `translateY(${dy}px)` },
+          { transform: 'translateY(0)' }
+        ],
+        { duration: 220, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      )
+    })
+  })
+}
+
 function handleCatDragStart(e: DragEvent, catId: string) {
   draggingCatId.value = catId
   document.body.classList.add('is-dragging')
@@ -714,14 +741,16 @@ function handleCatDragLeave(targetId: string) {
 function handleCatDrop(e: DragEvent, targetId: string) {
   e.preventDefault()
   if (!draggingCatId.value || draggingCatId.value === targetId) return
+  const movedId = draggingCatId.value
+  const container = categorySortListRef.value
   const sorted = [...navStore.sortedCategories]
   const ids = sorted.map(c => c.id)
-  const fromIdx = ids.indexOf(draggingCatId.value)
+  const fromIdx = ids.indexOf(movedId)
   const toIdx = ids.indexOf(targetId)
-  if (fromIdx === -1 || toIdx === -1) return
+  if (fromIdx === -1 || toIdx === -1 || !container) return
   ids.splice(fromIdx, 1)
-  ids.splice(toIdx, 0, draggingCatId.value)
-  navStore.reorderCategories(ids)
+  ids.splice(toIdx, 0, movedId)
+  flipAnimate(container, '.category-sort-item', 'catId', movedId, () => navStore.reorderCategories(ids))
   draggingCatId.value = null
   catDropTargetId.value = null
 }
@@ -783,7 +812,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           :class="['tab-btn', { active: activeTab === tab.id }]"
           @click="activeTab = tab.id"
         >
-          <span>{{ tab.icon }}</span>
+          <img :src="tab.icon" class="tab-icon" alt="" />
           {{ tab.name }}
         </button>
       </div>
@@ -804,52 +833,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
             </button>
           </div>
           <div class="setting-group">
-            <label class="group-label">主题色</label>
-            <div class="color-picker">
-              <button
-                v-for="color in themeColors"
-                :key="color"
-                :class="['color-btn', { active: settingsStore.settings.theme.primaryColor === color }]"
-                :style="{ background: color }"
-                @click="settingsStore.setPrimaryColor(color)"
-              />
-              <button
-                :class="['color-btn color-btn-custom', { active: showCustomColorInput }]"
-                @click="showCustomColorInput = !showCustomColorInput"
-              >
-                +
-              </button>
-            </div>
-            <div v-if="showCustomColorInput" class="custom-color-row">
-              <input
-                type="color"
-                :value="settingsStore.settings.theme.primaryColor"
-                @input="settingsStore.setPrimaryColor(($event.target as HTMLInputElement).value)"
-                class="color-input-native"
-              />
-              <input
-                type="text"
-                class="color-text-input"
-                :value="settingsStore.settings.theme.primaryColor"
-                @input="settingsStore.setPrimaryColor(($event.target as HTMLInputElement).value)"
-                placeholder="#6366f1"
-              />
-            </div>
-          </div>
-          <div class="slider-row">
-            <span>圆角大小</span>
-            <input
-              type="range"
-              min="0"
-              max="24"
-              step="2"
-              :value="settingsStore.settings.theme.borderRadius"
-              @input="settingsStore.setBorderRadius(Number(($event.target as HTMLInputElement).value))"
-              class="range-slider"
-            />
-            <span class="slider-val">{{ settingsStore.settings.theme.borderRadius }}px</span>
-          </div>
-          <div class="setting-group">
             <label class="group-label">卡片尺寸</label>
             <div class="layout-modes">
               <button
@@ -864,45 +847,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </div>
 
           <h4>背景</h4>
-          <div class="setting-group">
-            <label class="group-label">纯色背景</label>
-            <div class="color-picker">
-              <button
-                :class="['color-btn', { active: !settingsStore.settings.theme.backgroundColor }]"
-                :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-                title="跟随主题"
-                @click="settingsStore.setBackgroundColor('')"
-              />
-              <button
-                v-for="color in bgColors"
-                :key="color"
-                :class="['color-btn', { active: settingsStore.settings.theme.backgroundColor === color }]"
-                :style="{ background: color }"
-                @click="settingsStore.setBackgroundColor(color)"
-              />
-              <button
-                :class="['color-btn color-btn-custom', { active: showCustomBgInput }]"
-                @click="showCustomBgInput = !showCustomBgInput"
-              >
-                +
-              </button>
-            </div>
-            <div v-if="showCustomBgInput" class="custom-color-row">
-              <input
-                type="color"
-                :value="settingsStore.settings.theme.backgroundColor || '#f8fafc'"
-                @input="settingsStore.setBackgroundColor(($event.target as HTMLInputElement).value)"
-                class="color-input-native"
-              />
-              <input
-                type="text"
-                class="color-text-input"
-                :value="settingsStore.settings.theme.backgroundColor"
-                @input="settingsStore.setBackgroundColor(($event.target as HTMLInputElement).value)"
-                placeholder="输入颜色值..."
-              />
-            </div>
-          </div>
           <div class="setting-group">
             <label class="group-label">自定义背景图</label>
             <div class="bg-input-row">
@@ -925,6 +869,17 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               >
                 ✕
               </button>
+            </div>
+            <div class="bg-presets">
+              <button
+                v-for="bg in presetBgs"
+                :key="bg.url"
+                class="bg-preset-thumb"
+                :class="{ active: effectiveBgImage === bg.url }"
+                :style="{ backgroundImage: `url(${bg.url})` }"
+                :title="bg.name"
+                @click="settingsStore.setBackgroundImage(bg.url)"
+              />
             </div>
           </div>
           <div v-if="effectiveBgImage" class="setting-group">
@@ -955,151 +910,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
               <span class="slider-val">{{ Math.round((settingsStore.settings.theme.bgOverlayOpacity ?? 1) * 100) }}%</span>
             </div>
           </div>
-
-          <h4 class="collapsible-header" @click="showColorStyles = !showColorStyles">
-            <span>自定义颜色</span>
-            <svg :class="['collapse-arrow', { collapsed: !showColorStyles }]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </h4>
-          <Transition name="collapse">
-            <div v-if="showColorStyles" class="color-styles-panel">
-              <div class="setting-group">
-                <label class="group-label">搜索框颜色</label>
-                <div class="color-picker">
-                  <button
-                    :class="['color-btn', { active: !settingsStore.settings.theme.searchColor }]"
-                    :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-                    title="跟随主题"
-                    @click="settingsStore.setSearchColor('')"
-                  />
-                  <button
-                    v-for="color in themeColors"
-                    :key="'sc-' + color"
-                    :class="['color-btn', { active: settingsStore.settings.theme.searchColor === color }]"
-                    :style="{ background: color }"
-                    @click="settingsStore.setSearchColor(color)"
-                  />
-                  <button
-                    :class="['color-btn color-btn-custom', { active: showCustomSearchColor }]"
-                    @click="showCustomSearchColor = !showCustomSearchColor"
-                  >
-                    +
-                  </button>
-                </div>
-                <div v-if="showCustomSearchColor" class="custom-color-row">
-                  <input type="color" :value="settingsStore.settings.theme.searchColor || '#ffffff'" @input="settingsStore.setSearchColor(($event.target as HTMLInputElement).value)" class="color-input-native" />
-                  <input type="text" class="color-text-input" :value="settingsStore.settings.theme.searchColor" @input="settingsStore.setSearchColor(($event.target as HTMLInputElement).value)" placeholder="#ffffff" />
-                </div>
-                <div class="slider-row">
-                  <span>透明度</span>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.05"
-                    :value="settingsStore.settings.theme.searchOpacity ?? 1"
-                    @input="settingsStore.setSearchOpacity(Number(($event.target as HTMLInputElement).value))"
-                    class="range-slider"
-                  />
-                  <span class="slider-val">{{ Math.round((settingsStore.settings.theme.searchOpacity ?? 1) * 100) }}%</span>
-                </div>
-              </div>
-
-              <div class="setting-group">
-                <label class="group-label">书签卡片颜色</label>
-                <div class="color-picker">
-                  <button
-                    :class="['color-btn', { active: !settingsStore.settings.theme.cardColor }]"
-                    :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-                    title="跟随主题"
-                    @click="settingsStore.setCardColor('')"
-                  />
-                  <button
-                    v-for="color in themeColors"
-                    :key="'cc-' + color"
-                    :class="['color-btn', { active: settingsStore.settings.theme.cardColor === color }]"
-                    :style="{ background: color }"
-                    @click="settingsStore.setCardColor(color)"
-                  />
-                  <button
-                    :class="['color-btn color-btn-custom', { active: showCustomCardColor }]"
-                    @click="showCustomCardColor = !showCustomCardColor"
-                  >
-                    +
-                  </button>
-                </div>
-                <div v-if="showCustomCardColor" class="custom-color-row">
-                  <input type="color" :value="settingsStore.settings.theme.cardColor || '#ffffff'" @input="settingsStore.setCardColor(($event.target as HTMLInputElement).value)" class="color-input-native" />
-                  <input type="text" class="color-text-input" :value="settingsStore.settings.theme.cardColor" @input="settingsStore.setCardColor(($event.target as HTMLInputElement).value)" placeholder="#ffffff" />
-                </div>
-                <div class="slider-row">
-                  <span>透明度</span>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.05"
-                    :value="settingsStore.settings.theme.cardOpacity ?? 1"
-                    @input="settingsStore.setCardOpacity(Number(($event.target as HTMLInputElement).value))"
-                    class="range-slider"
-                  />
-                  <span class="slider-val">{{ Math.round((settingsStore.settings.theme.cardOpacity ?? 1) * 100) }}%</span>
-                </div>
-              </div>
-
-              <div class="setting-group">
-                <label class="group-label">全局字体颜色</label>
-                <div class="color-picker">
-                  <button
-                    :class="['color-btn', { active: !settingsStore.settings.theme.textColor }]"
-                    :style="{ background: 'var(--bg-card)', border: '2px dashed var(--border)' }"
-                    title="跟随主题"
-                    @click="settingsStore.setTextColor('')"
-                  />
-                  <button
-                    v-for="color in textColors"
-                    :key="'tc-' + color"
-                    :class="['color-btn', { active: settingsStore.settings.theme.textColor === color }]"
-                    :style="{ background: color }"
-                    @click="settingsStore.setTextColor(color)"
-                  />
-                  <button
-                    :class="['color-btn color-btn-custom', { active: showCustomTextColorInput }]"
-                    @click="showCustomTextColorInput = !showCustomTextColorInput"
-                  >
-                    +
-                  </button>
-                </div>
-                <div v-if="showCustomTextColorInput" class="custom-color-row">
-                  <input
-                    type="color"
-                    :value="settingsStore.settings.theme.textColor || '#0f172a'"
-                    @input="settingsStore.setTextColor(($event.target as HTMLInputElement).value)"
-                    class="color-input-native"
-                  />
-                  <input
-                    type="text"
-                    class="color-text-input"
-                    :value="settingsStore.settings.theme.textColor"
-                    @input="settingsStore.setTextColor(($event.target as HTMLInputElement).value)"
-                    placeholder="#0f172a"
-                  />
-                </div>
-                <div class="slider-row">
-                  <span>透明度</span>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.05"
-                    :value="settingsStore.settings.theme.textOpacity ?? 1"
-                    @input="settingsStore.setTextOpacity(Number(($event.target as HTMLInputElement).value))"
-                    class="range-slider"
-                  />
-                  <span class="slider-val">{{ Math.round((settingsStore.settings.theme.textOpacity ?? 1) * 100) }}%</span>
-                </div>
-              </div>
-            </div>
-          </Transition>
         </div>
 
         <div v-show="activeTab === 'layout'" class="settings-section">
@@ -1125,12 +935,13 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
           <h4>工具栏</h4>
           <div class="toolbar-hint">拖拽手柄调整顺序，点击切换显隐</div>
-          <div class="toolbar-manage-list">
+          <div ref="toolbarManageListRef" class="toolbar-manage-list">
             <div
               v-for="btn in settingsStore.getToolbar()"
               :key="btn.id"
               class="toolbar-manage-item"
               :class="{ 'toolbar-hidden': !btn.visible }"
+              :data-btn-id="btn.id"
               @dragover="handleToolbarDragOver($event, btn.id)"
               @drop="handleToolbarDrop($event, btn.id)"
               @dragend="handleToolbarDragEnd"
@@ -1294,15 +1105,15 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                       'cat-drop-target': catDropTargetId === cat.id
                     }"
                     :data-cat-id="cat.id"
+                    @dragover="handleCatDragOver($event, cat.id)"
+                    @dragleave="handleCatDragLeave(cat.id)"
+                    @drop="handleCatDrop($event, cat.id)"
+                    @dragend="handleCatDragEnd"
                   >
                     <span
                       class="category-sort-handle"
                       draggable="true"
                       @dragstart="handleCatDragStart($event, cat.id)"
-                      @dragover="handleCatDragOver($event, cat.id)"
-                      @dragleave="handleCatDragLeave(cat.id)"
-                      @drop="handleCatDrop($event, cat.id)"
-                      @dragend="handleCatDragEnd"
                       @touchstart="handleCatTouchStart($event, cat.id)"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
@@ -1400,7 +1211,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 .settings-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(61, 52, 40, 0.3);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -1414,8 +1225,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   max-width: 600px;
   max-height: 90vh;
   background: var(--bg-card);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1476,8 +1287,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: 50px;
   font-size: 13px;
+  font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
   transition: all var(--transition);
@@ -1493,6 +1305,17 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   color: white;
 }
 
+.tab-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.tab-btn.active .tab-icon {
+  filter: brightness(0) invert(1);
+}
+
 .settings-content {
   padding: 20px 24px;
   overflow-y: auto;
@@ -1506,7 +1329,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   padding: 12px 24px;
   border-top: 1px solid var(--border);
   background: var(--bg-card);
-  border-radius: 0 0 16px 16px;
+  border-radius: 0 0 24px 24px;
 }
 
 .settings-section {
@@ -1539,7 +1362,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   justify-content: center;
   gap: 6px;
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: 50px;
   font-size: 13px;
   color: var(--text-secondary);
   border: 1px solid var(--border);
@@ -1557,30 +1380,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   color: white;
 }
 
-.color-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.color-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: all var(--transition);
-}
-
-.color-btn:hover {
-  transform: scale(1.1);
-}
-
-.color-btn.active {
-  border-color: var(--text);
-  transform: scale(1.1);
-}
-
 .toggle-row {
   display: flex;
   align-items: center;
@@ -1591,18 +1390,47 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 }
 
 .toggle {
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--bg);
-  color: var(--text-muted);
-  transition: all var(--transition);
+  position: relative;
+  min-width: 52px;
+  height: 28px;
+  padding: 0 10px 0 28px;
+  border-radius: 50px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #d4c9b4;
+  color: #a0936e;
+  border: 2.5px solid #c4b89e;
+  box-shadow: inset 0 2px 4px rgba(114, 93, 66, 0.15);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: url('/assets/cursor/cursor-icon.png') 4 0, pointer;
+  line-height: 1;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #f7f3df;
+  border: 2.5px solid #c4b89e;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .toggle.active {
-  background: var(--primary);
-  color: white;
+  background: #86d67a;
+  color: #fff;
+  border-color: #6fba2c;
+  box-shadow: inset 0 2px 4px rgba(90, 158, 30, 0.2);
+  padding: 0 28px 0 10px;
+}
+
+.toggle.active::after {
+  left: calc(100% - 24px);
+  border-color: #6fba2c;
 }
 
 .setting-group {
@@ -1610,7 +1438,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: 16px;
   background: var(--bg);
   border: 1px solid var(--border);
 }
@@ -1620,60 +1448,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   font-weight: 600;
   color: var(--text);
   margin-bottom: 4px;
-}
-
-.collapsible-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  user-select: none;
-  padding-right: 4px;
-  transition: color var(--transition);
-}
-
-.collapsible-header:hover {
-  color: var(--primary);
-}
-
-.collapse-arrow {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  flex-shrink: 0;
-}
-
-.collapse-arrow.collapsed {
-  transform: rotate(-90deg);
-}
-
-.collapse-enter-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-}
-
-.collapse-leave-active {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-}
-
-.collapse-enter-from,
-.collapse-leave-to {
-  opacity: 0;
-  max-height: 0;
-  transform: translateY(-8px);
-}
-
-.collapse-enter-to,
-.collapse-leave-from {
-  opacity: 1;
-  max-height: 2000px;
-  transform: translateY(0);
-}
-
-.color-styles-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 4px;
 }
 
 .bg-input-row {
@@ -1735,6 +1509,35 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   border-color: #ef4444;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.08);
+}
+
+.bg-presets {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bg-preset-thumb {
+  width: 56px;
+  height: 40px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background-size: cover;
+  background-position: center;
+  cursor: url('/assets/cursor/cursor-icon.png') 4 0, pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.bg-preset-thumb:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(61, 52, 40, 0.12);
+}
+
+.bg-preset-thumb.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(25, 200, 185, 0.3);
 }
 
 .slider-row {
@@ -1801,7 +1604,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .engine-item.active {
   border-color: var(--primary);
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(25, 200, 185, 0.05);
 }
 
 .engine-item-main {
@@ -1833,8 +1636,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  color: var(--primary, #6366f1);
-  background: var(--primary-light, rgba(99, 102, 241, 0.12));
+  color: var(--primary, #19c8b9);
+  background: var(--primary-light, rgba(25, 200, 185, 0.12));
   border-radius: 3px;
   flex-shrink: 0;
   line-height: 1;
@@ -1982,7 +1785,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .btn {
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: 50px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -2011,61 +1814,6 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .btn-danger:hover {
   background: rgba(239, 68, 68, 0.2);
-}
-
-.color-btn-custom {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-muted);
-  background: var(--bg);
-  border: 2px dashed var(--border) !important;
-}
-
-.color-btn-custom:hover {
-  border-color: var(--primary) !important;
-  color: var(--primary);
-}
-
-.color-btn-custom.active {
-  border-color: var(--primary) !important;
-  color: var(--primary);
-}
-
-.custom-color-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.color-input-native {
-  width: 40px;
-  height: 32px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  background: var(--bg-card);
-}
-
-.color-text-input {
-  flex: 1;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 13px;
-  font-family: monospace;
-  color: var(--text);
-  background: var(--bg-card);
-  outline: none;
-  transition: border-color var(--transition);
-}
-
-.color-text-input:focus {
-  border-color: var(--primary);
-}
-
-.color-text-input::placeholder {
-  color: var(--text-muted);
 }
 
 .btn-block {
@@ -2138,7 +1886,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .category-sort-item.cat-drop-target {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 2px rgba(25, 200, 185, 0.2);
   transform: scale(1.02);
 }
 
@@ -2241,7 +1989,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   position: fixed;
   inset: 0;
   z-index: 6000;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(61, 52, 40, 0.4);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -2252,8 +2000,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   width: 400px;
   max-height: 70vh;
   background: var(--bg-card);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2290,6 +2038,52 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
     transform: scale(1) translateY(0);
   }
 }
+
+@media (max-width: 480px) {
+  .settings-modal {
+    max-height: 95vh;
+    border-radius: 18px;
+  }
+
+  .settings-tabs {
+    padding: 10px 12px;
+    gap: 2px;
+  }
+
+  .tab-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .tab-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .settings-content {
+    padding: 16px 14px;
+  }
+
+  .toggle {
+    min-width: 56px;
+    height: 32px;
+  }
+
+  .toggle::after {
+    width: 24px;
+    height: 24px;
+  }
+
+  .toggle.active::after {
+    left: calc(100% - 28px);
+  }
+
+  .bg-preset-thumb {
+    width: 64px;
+    height: 46px;
+  }
+}
 </style>
 
 <style>
@@ -2297,7 +2091,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   position: fixed;
   inset: 0;
   z-index: 6000;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(61, 52, 40, 0.45);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -2311,8 +2105,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   max-height: 80vh;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -2365,7 +2159,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 .bi-modes .mode-btn.active {
   background: var(--bg-card);
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 3px rgba(61, 52, 40, 0.08);
 }
 
 .bi-category-list {
@@ -2478,7 +2272,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   position: fixed;
   inset: 0;
   z-index: 6000;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(61, 52, 40, 0.45);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -2490,8 +2284,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   max-width: 90vw;
   background: var(--bg-card);
   border: none;
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   padding: 28px 24px;
   display: flex;
   flex-direction: column;
@@ -2528,7 +2322,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: left;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 4px rgba(61, 52, 40, 0.04);
 }
 
 .reset-option:hover {
@@ -2536,8 +2330,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 }
 
 .reset-option-safe:hover {
-  background: rgba(99, 102, 241, 0.08);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  background: rgba(25, 200, 185, 0.08);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.15);
 }
 
 .reset-option-danger:hover {

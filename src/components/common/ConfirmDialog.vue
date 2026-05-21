@@ -94,7 +94,7 @@ function confirm() {
   position: fixed;
   inset: 0;
   z-index: 5000;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(61, 52, 40, 0.4);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -104,12 +104,11 @@ function confirm() {
 .confirm-dialog-modal {
   background: var(--bg-card);
   border: none;
-  /* 弹窗圆角跟随全局设置 */
-  border-radius: var(--radius);
+  border-radius: 24px;
   padding: 24px;
   width: 320px;
   max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -137,14 +136,14 @@ function confirm() {
 
 .confirm-dialog-cancel {
   padding: 8px 16px;
-  border-radius: 10px;
+  border-radius: 50px;
   font-size: 12px;
   color: var(--text-secondary);
   background: var(--bg);
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(61, 52, 40, 0.06);
 }
 
 .confirm-dialog-cancel:hover {
@@ -153,7 +152,7 @@ function confirm() {
 
 .confirm-dialog-confirm {
   padding: 8px 16px;
-  border-radius: 10px;
+  border-radius: 50px;
   font-size: 12px;
   font-weight: 500;
   color: white;
@@ -161,12 +160,12 @@ function confirm() {
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-bottom);
 }
 
 .confirm-dialog-confirm:hover:not(:disabled) {
   opacity: 0.9;
-  box-shadow: 0 3px 10px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 3px 10px rgba(25, 200, 185, 0.35);
 }
 
 .confirm-dialog-confirm:disabled {
@@ -176,7 +175,7 @@ function confirm() {
 
 .confirm-dialog-confirm.danger {
   background: #ef4444;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 5px 0 0 var(--error-active);
 }
 
 .confirm-dialog-confirm.danger:hover:not(:disabled) {

@@ -145,11 +145,10 @@ function handleBackdropClick() {
   z-index: 4999;
   background: var(--bg-card);
   border: none;
-  /* 右键菜单圆角跟随全局设置 */
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: 16px;
   padding: 6px;
   min-width: 170px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(61, 52, 40, 0.15);
 }
 
 .ctx-item {
@@ -158,7 +157,7 @@ function handleBackdropClick() {
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
   color: var(--text);
   background: none;

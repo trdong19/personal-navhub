@@ -50,10 +50,10 @@ export function useTouchDrag(options: UseTouchDragOptions) {
       z-index: 9999;
       opacity: 0.85;
       transform: rotate(2deg) scale(1.05);
-      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
-      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(25, 200, 185, 0.3);
+      border-radius: 20px;
       pointer-events: none;
-      transition: none;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
     `
     document.body.appendChild(clone)
     el.classList.add('card-dragging')
@@ -121,8 +121,11 @@ export function useTouchDrag(options: UseTouchDragOptions) {
     document.body.classList.remove('is-dragging')
 
     if (clone) {
-      clone.remove()
+      clone.style.transform = 'rotate(0deg) scale(1)'
+      clone.style.opacity = '0'
+      const el = clone
       clone = null
+      setTimeout(() => el.remove(), 180)
     }
     cardRect = null
     cardRef.value?.classList.remove('card-dragging')

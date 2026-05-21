@@ -248,8 +248,8 @@ function handleNativeDragStart(e: DragEvent) {
     clone.style.position = 'absolute'
     clone.style.top = '-9999px'
     clone.style.left = '-9999px'
-    clone.style.boxShadow = '0 8px 32px rgba(99, 102, 241, 0.25)'
-    clone.style.borderRadius = 'var(--radius)'
+    clone.style.boxShadow = '0 8px 32px rgba(25, 200, 185, 0.25)'
+    clone.style.borderRadius = '20px'
     document.body.appendChild(clone)
     e.dataTransfer!.setDragImage(clone, cardRef.value.offsetWidth / 2, 20)
     requestAnimationFrame(() => document.body.removeChild(clone))
@@ -384,13 +384,13 @@ onUnmounted(() => {
   background: var(--bg-card);
   border: none;
   /* 圆角跟随全局设置 */
-  border-radius: var(--radius);
+  border-radius: 20px;
   user-select: none;
   will-change: transform, opacity;
   contain: layout style paint; /* 提升渲染性能 */
   transition: box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow);
   /* Grid 子元素默认 min-width: auto 会阻止内容收缩，导致 text-overflow 失效 */
   min-width: 0;
   overflow: hidden;
@@ -403,8 +403,14 @@ onUnmounted(() => {
 }
 
 .nav-card:hover {
-  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.18);
+  box-shadow: 0 6px 20px rgba(61, 52, 40, 0.12);
   transform: translateY(-3px);
+}
+
+.nav-card:active {
+  transform: translateY(1px);
+  box-shadow: var(--shadow);
+  transition-duration: 0.1s;
 }
 
 .nav-card.card-dragging {
@@ -414,7 +420,7 @@ onUnmounted(() => {
 }
 
 .nav-card.card-drag-over {
-  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(25, 200, 185, 0.2);
   transform: scale(1.03);
 }
 
@@ -451,7 +457,7 @@ onUnmounted(() => {
   width: 40px;
   height: 40px;
   /* 图标容器圆角略小于卡片 */
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: 18px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -475,8 +481,8 @@ onUnmounted(() => {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(99, 102, 241, 0.1);
-  border-radius: calc(var(--radius) - 2px);
+  background: rgba(25, 200, 185, 0.1);
+  border-radius: 18px;
   color: var(--primary);
   cursor: grab;
 }
@@ -497,7 +503,7 @@ onUnmounted(() => {
   font-size: 18px;
   font-weight: 600;
   color: var(--primary);
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(25, 200, 185, 0.1);
 }
 
 .card-info {
@@ -526,13 +532,13 @@ onUnmounted(() => {
 
 .nav-card.size-tiny {
   padding: 6px 8px;
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: 14px;
 }
 
 .nav-card.size-tiny .card-icon {
   width: 24px;
   height: 24px;
-  border-radius: calc(var(--radius) - 6px);
+  border-radius: 12px;
 }
 
 .nav-card.size-tiny .card-title {
@@ -542,14 +548,14 @@ onUnmounted(() => {
 .nav-card.size-small {
   padding: 10px 12px;
   /* 小尺寸卡片圆角略小 */
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: 16px;
 }
 
 .nav-card.size-small .card-icon {
   width: 32px;
   height: 32px;
   /* 小尺寸图标容器圆角更小 */
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: 14px;
 }
 
 .nav-card.size-small .card-title {
@@ -564,7 +570,7 @@ onUnmounted(() => {
   width: 48px;
   height: 48px;
   /* 大尺寸图标容器圆角与卡片一致 */
-  border-radius: var(--radius);
+  border-radius: 20px;
 }
 
 .nav-card.size-large .card-title {
@@ -577,7 +583,7 @@ onUnmounted(() => {
 
 .nav-card.has-custom-color .card-title {
   color: #fff;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  text-shadow: 0 1px 2px rgba(61, 52, 40, 0.25);
 }
 
 .nav-card.has-custom-color .card-desc {
@@ -593,7 +599,7 @@ onUnmounted(() => {
   .nav-card {
     padding: 12px;
     /* 平板端圆角略小 */
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: 18px;
   }
 
   .card-content {
@@ -604,7 +610,7 @@ onUnmounted(() => {
     width: 36px;
     height: 36px;
     /* 平板端图标容器圆角 */
-    border-radius: calc(var(--radius) - 4px);
+    border-radius: 16px;
   }
 
   .card-icon img {
@@ -630,11 +636,11 @@ onUnmounted(() => {
 }
 
 .nav-card.selected {
-  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(25, 200, 185, 0.2);
 }
 
 .nav-card.range-start {
-  box-shadow: 0 0 0 3px var(--primary), 0 0 0 6px rgba(99, 102, 241, 0.15), 0 4px 16px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 3px var(--primary), 0 0 0 6px rgba(25, 200, 185, 0.15), 0 4px 16px rgba(25, 200, 185, 0.2);
 }
 
 .nav-card.range-start::before {
@@ -688,7 +694,7 @@ onUnmounted(() => {
   .nav-card {
     padding: 12px;
     /* 手机端圆角更小 */
-    border-radius: calc(var(--radius) - 4px);
+    border-radius: 16px;
     min-height: 56px;
   }
 
@@ -701,7 +707,7 @@ onUnmounted(() => {
     width: 32px;
     height: 32px;
     /* 手机端图标容器圆角 */
-    border-radius: calc(var(--radius) - 6px);
+    border-radius: 14px;
   }
 
   .nav-card.size-tiny .card-icon {

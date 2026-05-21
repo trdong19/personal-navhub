@@ -23,10 +23,10 @@ export const defaultSettings: UserSettings = {
   theme: {
     /** 跟随系统深色模式 */
     mode: 'auto',
-    /** 默认主色: 靛蓝色 */
-    primaryColor: '#6366f1',
-    /** 默认圆角 16px，与 global.css 保持一致 */
-    borderRadius: 16,
+    /** 默认主色: 薄荷青 */
+    primaryColor: '#19c8b9',
+    /** 默认圆角 18px，与 global.css 保持一致 */
+    borderRadius: 18,
     /** 无默认背景图 */
     backgroundImage: '',
     /** 无默认背景色 */

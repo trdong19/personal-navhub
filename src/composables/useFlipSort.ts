@@ -84,9 +84,9 @@ export function useFlipSort(
             { transform: `translate3d(${dx}px, ${dy}px, 0)`, offset: 0 },
             { transform: 'translate3d(0, 0, 0)', offset: 1 }
           ],
-          { 
-            duration: 150,
-            easing: 'cubic-bezier(0.3, 0.7, 0.4, 1)'
+          {
+            duration: 220,
+            easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)'
           }
         )
         

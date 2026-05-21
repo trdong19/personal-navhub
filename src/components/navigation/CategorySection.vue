@@ -460,7 +460,7 @@ function handleDragEnd() {
     el.classList.remove('card-dragging')
   })
   document.body.classList.remove('is-dragging')
-  
+
   // 触摸端：如果有跨分类拖放目标，将卡片移动到目标分类
   if (draggingId.value && dropTargetCategory.value) {
     const link = navStore.links.find(l => l.id === draggingId.value)
@@ -545,7 +545,7 @@ function handleCategoryDragHandleTouchStart(e: TouchEvent, categoryId: string) {
     z-index: 9999;
     opacity: 0.9;
     transform: rotate(1deg);
-    box-shadow: 0 12px 40px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 12px 40px rgba(25, 200, 185, 0.3);
     border-radius: 12px;
     pointer-events: none;
     transition: none;
@@ -759,7 +759,7 @@ function confirmAddCategory() {
     toast.warning('该分类下已存在同名分类')
     return
   }
-  navStore.addCategory(name, '📁', '#6366f1', newCatParentId.value)
+  navStore.addCategory(name, '📁', '#19c8b9', newCatParentId.value)
   showAddCategory.value = false
   newCatName.value = ''
 }
@@ -1197,16 +1197,16 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 /* 分类区块添加独立卡片背景 */
 .category-section:not(.no-card) {
   background: var(--bg-card);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow);
   border: 1px solid var(--border);
 }
 
 .category-section {
   transition: box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   /* 分类区块圆角跟随全局设置 */
-  border-radius: var(--radius);
+  border-radius: 20px;
   padding: 0 4px;
 }
 
@@ -1220,7 +1220,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 }
 
 .category-section.drop-target {
-  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(25, 200, 185, 0.15);
 }
 
 .category-header {
@@ -1234,26 +1234,28 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 8px;
+  padding: 6px 12px 6px 6px;
   /* 分类标题区域圆角 */
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: 50px;
   cursor: pointer;
   user-select: none;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .category-title-wrapper:hover {
   background: var(--bg-hover);
+  box-shadow: var(--shadow);
 }
 
 .category-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 2px 0 0 rgba(61, 52, 40, 0.1);
 }
 
 .category-header:hover .category-icon {
@@ -1278,11 +1280,13 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 }
 
 .category-count {
-  font-size: 12px;
-  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
   background: var(--bg-secondary);
-  border-radius: 10px;
+  border-radius: 50px;
   color: var(--text-muted);
+  letter-spacing: 0.02em;
 }
 
 .category-actions {
@@ -1336,8 +1340,8 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 }
 
 .add-link-btn:hover {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
+  background: rgba(25, 200, 185, 0.1);
+  color: #19c8b9;
 }
 
 .category-collapse {
@@ -1357,9 +1361,9 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 
 .nav-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  padding-top: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  padding-top: 8px;
   padding-bottom: 4px;
 }
 
@@ -1370,7 +1374,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
   padding: 6px 10px;
   border-left: 2px solid var(--border);
   /* 子分类右侧圆角 */
-  border-radius: 0 calc(var(--radius) - 6px) calc(var(--radius) - 6px) 0;
+  border-radius: 0 14px 14px 0;
   background: color-mix(in srgb, var(--bg-card) 60%, var(--bg));
   transition: all 0.2s ease;
 }
@@ -1392,7 +1396,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 
 .sub-category.drop-target {
   border-left-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(25, 200, 185, 0.15);
 }
 
 .sub-category-header {
@@ -1455,7 +1459,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
   padding: 10px 14px;
   border: none;
   /* 输入框圆角跟随全局设置 */
-  border-radius: var(--radius);
+  border-radius: 20px;
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
@@ -1465,7 +1469,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 }
 
 .add-cat-input:focus {
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px rgba(25, 200, 185, 0.15);
 }
 
 .category-section.cat-dragging {
@@ -1505,7 +1509,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 }
 
 .category-list.batch-dragging .nav-card.selected {
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 16px rgba(25, 200, 185, 0.3);
   transform: scale(1.02);
 }
 
@@ -1527,7 +1531,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
   100% {
     transform: scale(0.88) rotate(-0.5deg);
     opacity: 0.55;
-    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.25);
+    box-shadow: 0 2px 12px rgba(25, 200, 185, 0.25);
   }
 }
 

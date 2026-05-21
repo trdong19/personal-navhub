@@ -18,7 +18,7 @@ const navStore = useNavStore()
 const toast = useToast()
 
 const cardColors = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+  '#19c8b9', '#8b5cf6', '#a855f7', '#d946ef',
   '#ec4899', '#f43f5e', '#ef4444', '#f97316',
   '#f59e0b', '#84cc16', '#22c55e', '#10b981',
   '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6',
@@ -304,8 +304,8 @@ function handleSubmit() {
               </button>
             </div>
             <div v-if="showCustomCardColor" class="custom-color-row">
-              <input type="color" :value="form.color || '#6366f1'" @input="form.color = ($event.target as HTMLInputElement).value" class="color-input-native" />
-              <input type="text" class="color-text-input" v-model="form.color" placeholder="#6366f1" />
+              <input type="color" :value="form.color || '#19c8b9'" @input="form.color = ($event.target as HTMLInputElement).value" class="color-input-native" />
+              <input type="text" class="color-text-input" v-model="form.color" placeholder="#19c8b9" />
             </div>
           </div>
         </div>
@@ -381,7 +381,7 @@ function handleSubmit() {
 .editor-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(61, 52, 40, 0.45);
   backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
@@ -396,7 +396,7 @@ function handleSubmit() {
   max-height: 90vh;
   background: var(--bg-card);
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.25);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -645,7 +645,7 @@ function handleSubmit() {
   border-radius: 50%;
   background: var(--primary);
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 3px rgba(61, 52, 40, 0.2);
 }
 
 .opacity-value {

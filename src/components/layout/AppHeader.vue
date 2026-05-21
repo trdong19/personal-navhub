@@ -192,7 +192,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             <div v-if="auth.authMessage.value" :class="['auth-message', auth.authStatus.value === 'error' ? 'error' : 'success']">
               {{ auth.authMessage.value }}
             </div>
-            <button type="submit" class="auth-submit" :disabled="authLoading || !authPassword.trim()">
+            <button type="submit" :class="['auth-submit', { 'btn-loading': authLoading }]" :disabled="authLoading || !authPassword.trim()">
               {{ authLoading ? '处理中...' : (isSetupMode ? '创建并进入' : '登录') }}
             </button>
           </form>
@@ -214,9 +214,10 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 }
 
 .header-inner {
-  width: 100%;
-  padding: 0 20px;
-  height: 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 68px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -241,7 +242,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   align-items: center;
   gap: 4px;
   padding: 5px 12px;
-  border-radius: 20px;
+  border-radius: 50px;
   font-size: 12px;
   font-weight: 500;
   background: rgba(239, 68, 68, 0.1);
@@ -288,7 +289,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   align-items: center;
   gap: 5px;
   padding: 5px 12px;
-  border-radius: 20px;
+  border-radius: 50px;
   font-size: 12px;
   font-weight: 500;
   background: var(--primary);
@@ -296,13 +297,13 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   transition: all var(--transition);
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-bottom);
 }
 
 .login-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-bottom), 0 3px 8px rgba(25, 200, 185, 0.25);
 }
 
 .fade-enter-active, .fade-leave-active {
@@ -331,8 +332,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   background: var(--bg-card);
   border: none;
   /* 登录弹窗圆角跟随全局设置 */
-  border-radius: var(--radius);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
   padding: 28px 24px;
   animation: scaleIn 0.2s ease;
 }
@@ -395,7 +396,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   width: 100%;
   padding: 9px 12px;
   border: none;
-  border-radius: 10px;
+  border-radius: 50px;
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
@@ -405,7 +406,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 }
 
 .auth-input:focus {
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px rgba(25, 200, 185, 0.15);
 }
 
 .auth-message {
@@ -430,7 +431,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 .auth-submit {
   width: 100%;
   padding: 10px 0;
-  border-radius: 12px;
+  border-radius: 50px;
   font-size: 14px;
   font-weight: 600;
   background: var(--primary);
@@ -439,18 +440,40 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   transition: all var(--transition);
   cursor: pointer;
   margin-top: 4px;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-bottom);
 }
 
 .auth-submit:hover:not(:disabled) {
   opacity: 0.9;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  box-shadow: var(--shadow-bottom), 0 4px 12px rgba(25, 200, 185, 0.35);
 }
 
 .auth-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.auth-submit.btn-loading {
+  opacity: 1;
+  cursor: default;
+  pointer-events: none;
+  background: #0ec4b6;
+  border: 4px solid #4de2da;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #0ec4b6,
+    #0ec4b6 10px,
+    #01b0a7 10px,
+    #01b0a7 20px
+  );
+  background-size: 28.28px 28.28px;
+  animation: animal-btn-loading 1s linear infinite;
+}
+
+@keyframes animal-btn-loading {
+  0% { background-position: 0 0; }
+  100% { background-position: -28.28px 0; }
 }
 
 @keyframes fadeIn {
