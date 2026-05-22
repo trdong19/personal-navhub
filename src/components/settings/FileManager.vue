@@ -212,6 +212,7 @@ onMounted(loadFiles)
   width: 100%;
   max-width: 640px;
   max-height: 85vh;
+  max-height: 85dvh;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 24px;
@@ -445,8 +446,8 @@ onMounted(loadFiles)
 }
 
 .fm-action-delete:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(224, 90, 90, 0.1);
+  color: var(--error);
 }
 
 .fm-empty {
@@ -475,5 +476,14 @@ onMounted(loadFiles)
 @keyframes fmScaleIn {
   from { opacity: 0; transform: scale(0.96) translateY(10px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (max-width: 480px) {
+  .fm-modal {
+    max-width: 100%;
+    max-height: 95vh;
+    max-height: 95dvh;
+    border-radius: 20px;
+  }
 }
 </style>

@@ -198,6 +198,7 @@ async function handleChangePassword() {
 const showFileManager = ref(false)
 
 const showCatSortModal = ref(false)
+const showToolbarSortModal = ref(false)
 
 const toolbarDragId = ref<ToolbarButtonId | null>(null)
 const toolbarManageListRef = ref<HTMLElement | null>(null)
@@ -239,7 +240,7 @@ function handleToolbarDrop(e: DragEvent, targetId: ToolbarButtonId) {
   if (fromIdx === -1 || toIdx === -1 || !container) return
   ids.splice(fromIdx, 1)
   ids.splice(toIdx, 0, movedId)
-  flipAnimate(container, '.toolbar-manage-item', 'btnId', movedId, () => settingsStore.reorderToolbar(ids))
+  flipAnimate(container, '.toolbar-sort-item', 'btnId', movedId, () => settingsStore.reorderToolbar(ids))
   toolbarDragId.value = null
   toolbarDropTarget.value = null
 }
@@ -247,6 +248,12 @@ function handleToolbarDrop(e: DragEvent, targetId: ToolbarButtonId) {
 function handleToolbarDragEnd() {
   toolbarDragId.value = null
   toolbarDropTarget.value = null
+}
+
+function handleToolbarDragLeave(id: ToolbarButtonId) {
+  if (toolbarDropTarget.value === id) {
+    toolbarDropTarget.value = null
+  }
 }
 
 // 工具栏触摸拖拽
@@ -259,7 +266,7 @@ const toolbarListRef = ref<HTMLElement | null>(null)
 
 function handleToolbarTouchStart(e: TouchEvent, id: ToolbarButtonId) {
   const handle = e.currentTarget as HTMLElement
-  const item = handle.closest('.toolbar-manage-item') as HTMLElement
+  const item = handle.closest('.toolbar-sort-item') as HTMLElement
   if (!item) return
   touchTbDragId = id
   touchTbDragging = true
@@ -284,7 +291,7 @@ function handleToolbarTouchStart(e: TouchEvent, id: ToolbarButtonId) {
     border: 1px solid var(--primary);
   `
   document.body.appendChild(touchTbClone)
-  item.classList.add('toolbar-dragging')
+  item.classList.add('toolbar-sort-dragging')
 
   if (navigator.vibrate) navigator.vibrate(30)
 
@@ -303,9 +310,9 @@ function handleTbDocTouchMove(e: TouchEvent) {
 
   const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY)
   if (elemBelow) {
-    const sortItem = elemBelow.closest<HTMLElement>('.toolbar-manage-item')
+    const sortItem = elemBelow.closest<HTMLElement>('.toolbar-sort-item')
     if (sortItem) {
-      const items = document.querySelectorAll('.toolbar-manage-item')
+      const items = document.querySelectorAll('.toolbar-sort-item')
       items.forEach((item, i) => {
         const btns = settingsStore.getToolbar()
         if (item === sortItem && btns[i] && btns[i].id !== touchTbDragId) {
@@ -330,7 +337,7 @@ function handleTbDocTouchEnd() {
     if (fromIdx !== -1 && toIdx !== -1 && container) {
       ids.splice(fromIdx, 1)
       ids.splice(toIdx, 0, touchTbDragId)
-      flipAnimate(container, '.toolbar-manage-item', 'btnId', touchTbDragId, () => settingsStore.reorderToolbar(ids))
+      flipAnimate(container, '.toolbar-sort-item', 'btnId', touchTbDragId, () => settingsStore.reorderToolbar(ids))
     }
   }
 
@@ -341,8 +348,8 @@ function handleTbDocTouchEnd() {
   toolbarDropTarget.value = null
   toolbarDragId.value = null
 
-  document.querySelectorAll('.toolbar-manage-item.toolbar-dragging').forEach(el => {
-    el.classList.remove('toolbar-dragging')
+  document.querySelectorAll('.toolbar-sort-item.toolbar-sort-dragging').forEach(el => {
+    el.classList.remove('toolbar-sort-dragging')
   })
   document.removeEventListener('touchmove', handleTbDocTouchMove)
   document.removeEventListener('touchend', handleTbDocTouchEnd)
@@ -934,32 +941,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </div>
 
           <h4>工具栏</h4>
-          <div class="toolbar-hint">拖拽手柄调整顺序，点击切换显隐</div>
-          <div ref="toolbarManageListRef" class="toolbar-manage-list">
-            <div
-              v-for="btn in settingsStore.getToolbar()"
-              :key="btn.id"
-              class="toolbar-manage-item"
-              :class="{ 'toolbar-hidden': !btn.visible }"
-              :data-btn-id="btn.id"
-              @dragover="handleToolbarDragOver($event, btn.id)"
-              @drop="handleToolbarDrop($event, btn.id)"
-              @dragend="handleToolbarDragEnd"
-            >
-              <span
-                class="toolbar-manage-handle"
-                draggable="true"
-                @dragstart="handleToolbarDragStart($event, btn.id)"
-                @touchstart="handleToolbarTouchStart($event, btn.id)"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
-              </span>
-              <span class="toolbar-manage-name">{{ toolbarLabelMap[btn.id] }}</span>
-              <button class="toolbar-toggle" @click="settingsStore.toggleToolbarButton(btn.id)">
-                {{ btn.visible ? '✓' : '✕' }}
-              </button>
-            </div>
-          </div>
+          <button class="btn btn-secondary" @click="showToolbarSortModal = true">
+            管理工具栏
+          </button>
 
           <h4>分类</h4>
           <button class="btn btn-secondary" @click="showCatSortModal = true">
@@ -1128,6 +1112,53 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
           </div>
         </Transition>
 
+        <Transition name="fade">
+          <div v-if="showToolbarSortModal" class="tb-sort-overlay" @click.self="showToolbarSortModal = false">
+            <Transition name="modal-pop" appear>
+              <div v-if="showToolbarSortModal" class="tb-sort-modal">
+                <div class="tb-sort-header">
+                  <h3>管理工具栏</h3>
+                  <button class="close-btn" @click="showToolbarSortModal = false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  </button>
+                </div>
+                <div class="toolbar-sort-hint">拖拽手柄调整顺序，点击切换显隐</div>
+                <div ref="toolbarManageListRef" class="toolbar-sort-list tb-sort-body">
+                  <div
+                    v-for="btn in settingsStore.getToolbar()"
+                    :key="btn.id"
+                    class="toolbar-sort-item"
+                    :class="{
+                      'toolbar-sort-dragging': toolbarDragId === btn.id,
+                      'toolbar-sort-drop-target': toolbarDropTarget === btn.id,
+                      'toolbar-sort-hidden': !btn.visible
+                    }"
+                    :data-btn-id="btn.id"
+                    @dragover="handleToolbarDragOver($event, btn.id)"
+                    @dragleave="handleToolbarDragLeave(btn.id)"
+                    @drop="handleToolbarDrop($event, btn.id)"
+                    @dragend="handleToolbarDragEnd"
+                  >
+                    <span
+                      class="toolbar-sort-handle"
+                      draggable="true"
+                      @dragstart="handleToolbarDragStart($event, btn.id)"
+                      @touchstart="handleToolbarTouchStart($event, btn.id)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                    </span>
+                    <span class="toolbar-sort-name">{{ toolbarLabelMap[btn.id] }}</span>
+                    <button class="toolbar-sort-toggle" @click="settingsStore.toggleToolbarButton(btn.id)">
+                      <span v-if="btn.visible" class="toggle-on">✓</span>
+                      <span v-else class="toggle-off">✕</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </div>
+        </Transition>
+
         <div v-if="showBookmarkImport" class="bookmark-import-overlay" @mousedown.self="showBookmarkImport = false">
           <div class="bookmark-import-modal">
             <div class="bi-header">
@@ -1224,6 +1255,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   width: 100%;
   max-width: 600px;
   max-height: 90vh;
+  max-height: 90dvh;
   background: var(--bg-card);
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
@@ -1250,6 +1282,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   justify-content: space-between;
   padding: 20px 24px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .settings-header h3 {
@@ -1280,6 +1313,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   padding: 12px 24px;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .tab-btn {
@@ -1298,6 +1332,10 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 .tab-btn:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.tab-btn:active {
+  background: var(--bg-secondary);
 }
 
 .tab-btn.active {
@@ -1327,9 +1365,11 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 24px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   background: var(--bg-card);
   border-radius: 0 0 24px 24px;
+  flex-shrink: 0;
 }
 
 .settings-section {
@@ -1506,9 +1546,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 }
 
 .bg-clear-btn:hover {
-  border-color: #ef4444;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--error);
+  color: var(--error);
+  background: rgba(224, 90, 90, 0.08);
 }
 
 .bg-presets {
@@ -1807,13 +1847,13 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 }
 
 .btn-danger {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(224, 90, 90, 0.1);
+  color: var(--error);
+  border: 1px solid rgba(224, 90, 90, 0.2);
 }
 
 .btn-danger:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(224, 90, 90, 0.2);
 }
 
 .btn-block {
@@ -1823,17 +1863,17 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .form-error {
   font-size: 12px;
-  color: #ef4444;
+  color: var(--error);
   padding: 6px 10px;
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(224, 90, 90, 0.08);
   border-radius: 6px;
 }
 
 .form-success {
   font-size: 12px;
-  color: #22c55e;
+  color: var(--success);
   padding: 6px 10px;
-  background: rgba(34, 197, 94, 0.08);
+  background: rgba(111, 186, 44, 0.08);
   border-radius: 6px;
 }
 
@@ -1922,24 +1962,27 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   flex-shrink: 0;
 }
 
-.toolbar-hint {
+.toolbar-sort-hint {
   font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 8px;
 }
 
-.toolbar-manage-list {
+.toolbar-sort-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
 }
 
-.toolbar-manage-item {
+.toolbar-sort-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
   background: var(--bg);
   border: 1px solid var(--border);
   transition: all var(--transition);
@@ -1947,15 +1990,30 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   user-select: none;
 }
 
-.toolbar-manage-item.toolbar-dragging {
-  opacity: 0.4;
+.toolbar-sort-item:active {
+  cursor: grabbing;
 }
 
-.toolbar-manage-item.toolbar-hidden {
+.toolbar-sort-item:hover {
+  border-color: var(--primary);
+}
+
+.toolbar-sort-item.toolbar-sort-dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+
+.toolbar-sort-item.toolbar-sort-drop-target {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(25, 200, 185, 0.2);
+  transform: scale(1.02);
+}
+
+.toolbar-sort-item.toolbar-sort-hidden {
   opacity: 0.5;
 }
 
-.toolbar-manage-handle {
+.toolbar-sort-handle {
   display: flex;
   align-items: center;
   color: var(--text-muted);
@@ -1965,24 +2023,84 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   padding: 4px;
 }
 
-.toolbar-manage-name {
+.toolbar-sort-name {
   flex: 1;
   font-size: 13px;
+  font-weight: 600;
   color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.toolbar-toggle {
+.toolbar-sort-toggle {
   font-size: 14px;
   cursor: pointer;
   background: none;
   border: none;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
   transition: background var(--transition);
+  flex-shrink: 0;
 }
 
-.toolbar-toggle:hover {
+.toolbar-sort-toggle:hover {
   background: var(--bg-hover);
+}
+
+.toggle-on {
+  color: var(--success);
+}
+
+.toggle-off {
+  color: var(--text-muted);
+}
+
+.tb-sort-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  background: rgba(61, 52, 40, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tb-sort-modal {
+  width: 400px;
+  max-width: calc(100vw - 24px);
+  max-height: 70vh;
+  max-height: 70dvh;
+  background: var(--bg-card);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tb-sort-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tb-sort-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tb-sort-body {
+  padding: 12px 16px;
+  flex: 1;
+  max-height: calc(70vh - 80px);
+  max-height: calc(70dvh - 80px);
 }
 
 .cat-sort-overlay {
@@ -1998,7 +2116,9 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 
 .cat-sort-modal {
   width: 400px;
+  max-width: calc(100vw - 24px);
   max-height: 70vh;
+  max-height: 70dvh;
   background: var(--bg-card);
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
@@ -2026,6 +2146,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   padding: 12px 16px;
   flex: 1;
   max-height: calc(70vh - 80px);
+  max-height: calc(70dvh - 80px);
 }
 
 @keyframes modalSlideIn {
@@ -2042,6 +2163,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 @media (max-width: 480px) {
   .settings-modal {
     max-height: 95vh;
+    max-height: 95dvh;
     border-radius: 18px;
   }
 
@@ -2103,6 +2225,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
   width: 420px;
   max-width: 90vw;
   max-height: 80vh;
+  max-height: 80dvh;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 24px;
@@ -2335,8 +2458,8 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
 }
 
 .reset-option-danger:hover {
-  background: rgba(239, 68, 68, 0.08);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+  background: rgba(224, 90, 90, 0.08);
+  box-shadow: 0 4px 12px rgba(224, 90, 90, 0.15);
 }
 
 .reset-option-icon {

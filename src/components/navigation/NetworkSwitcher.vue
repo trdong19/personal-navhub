@@ -44,38 +44,35 @@ function toggle() {
 }
 
 .network-switcher.intranet {
-  color: #10b981;
+  color: var(--success);
 }
 
 .network-switcher.intranet:hover {
-  background: #10b981;
+  background: var(--success);
   color: white;
-  border-color: #10b981;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 12px rgba(111, 186, 44, 0.3);
   transform: translateY(-2px);
 }
 
 .network-switcher.extranet {
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 .network-switcher.extranet:hover {
-  background: #3b82f6;
+  background: var(--primary);
   color: white;
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(25, 200, 185, 0.3);
   transform: translateY(-2px);
 }
 
 .network-switcher.tunnel {
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .network-switcher.tunnel:hover {
-  background: #f59e0b;
+  background: var(--warning);
   color: white;
-  border-color: #f59e0b;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 4px 12px rgba(245, 195, 28, 0.3);
   transform: translateY(-2px);
 }
 

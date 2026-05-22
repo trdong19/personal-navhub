@@ -211,6 +211,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   background: var(--bg-card);
   border-bottom: none;
   box-shadow: none;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .header-inner {
@@ -245,9 +246,9 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   border-radius: 50px;
   font-size: 12px;
   font-weight: 500;
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(224, 90, 90, 0.1);
+  color: var(--error);
+  border: 1px solid rgba(224, 90, 90, 0.2);
   transition: all var(--transition);
   cursor: pointer;
   white-space: nowrap;
@@ -256,23 +257,23 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 }
 
 .undo-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(224, 90, 90, 0.2);
+  border-color: rgba(224, 90, 90, 0.3);
 }
 
 .undo-btn.move-undo-btn {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-  border-color: rgba(59, 130, 246, 0.2);
+  background: rgba(25, 200, 185, 0.1);
+  color: var(--primary);
+  border-color: rgba(25, 200, 185, 0.2);
 }
 
 .undo-btn.move-undo-btn:hover {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(25, 200, 185, 0.2);
+  border-color: rgba(25, 200, 185, 0.3);
 }
 
 .undo-count {
-  background: #ef4444;
+  background: var(--error);
   color: white;
   padding: 1px 6px;
   border-radius: 10px;
@@ -281,7 +282,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 }
 
 .undo-btn.move-undo-btn .undo-count {
-  background: #3b82f6;
+  background: var(--primary);
 }
 
 .login-btn {
@@ -417,15 +418,15 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 }
 
 .auth-message.error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(224, 90, 90, 0.1);
+  color: var(--error);
+  border: 1px solid rgba(224, 90, 90, 0.2);
 }
 
 .auth-message.success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: rgba(111, 186, 44, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(111, 186, 44, 0.2);
 }
 
 .auth-submit {
@@ -458,14 +459,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   opacity: 1;
   cursor: default;
   pointer-events: none;
-  background: #0ec4b6;
-  border: 4px solid #4de2da;
+  background: var(--primary-dark);
+  border: 4px solid var(--primary-light);
   background-image: repeating-linear-gradient(
     -45deg,
-    #0ec4b6,
-    #0ec4b6 10px,
-    #01b0a7 10px,
-    #01b0a7 20px
+    var(--primary-dark),
+    var(--primary-dark) 10px,
+    var(--primary) 10px,
+    var(--primary) 20px
   );
   background-size: 28.28px 28.28px;
   animation: animal-btn-loading 1s linear infinite;

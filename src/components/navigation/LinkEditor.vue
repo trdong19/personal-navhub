@@ -394,8 +394,9 @@ function handleSubmit() {
   width: 100%;
   max-width: 540px;
   max-height: 90vh;
+  max-height: 90dvh;
   background: var(--bg-card);
-  border-radius: 16px;
+  border-radius: 24px;
   box-shadow: 0 20px 60px rgba(61, 52, 40, 0.25);
   overflow: hidden;
   display: flex;
@@ -722,5 +723,14 @@ function handleSubmit() {
 
 .color-text-input:focus {
   border-color: var(--primary);
+}
+
+@media (max-width: 480px) {
+  .editor-modal {
+    max-width: 100%;
+    max-height: 95vh;
+    max-height: 95dvh;
+    border-radius: 20px;
+  }
 }
 </style>

@@ -207,6 +207,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
   width: 100%;
   max-width: 650px;
   max-height: 90vh;
+  max-height: 90dvh;
   background: var(--bg-card);
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(61, 52, 40, 0.15);
@@ -411,7 +412,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
   border-radius: 9px;
   font-size: 10px;
   font-weight: 600;
-  background: #ef4444;
+  background: var(--error);
   color: white;
 }
 
@@ -511,7 +512,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
 
 .cat-stat-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), #5de8da);
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
   border-radius: 4px;
   transition: width 0.5s ease;
   min-width: 2px;
@@ -542,7 +543,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
   padding: 10px 12px;
   background: var(--bg);
   border-radius: 8px;
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid var(--warning);
 }
 
 .stale-name {
@@ -552,7 +553,7 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
 
 .stale-time {
   font-size: 12px;
-  color: #f59e0b;
+  color: var(--warning);
   font-weight: 500;
 }
 
@@ -561,5 +562,44 @@ const activeTab = ref<'overview' | 'categories' | 'stale'>('overview')
   padding: 24px;
   font-size: 14px;
   color: var(--text-muted);
+}
+
+@media (max-width: 480px) {
+  .stats-modal {
+    max-width: 100%;
+    max-height: 95vh;
+    max-height: 95dvh;
+    border-radius: 20px;
+  }
+
+  .stats-header {
+    padding: 16px;
+  }
+
+  .stats-body {
+    padding: 16px;
+  }
+
+  .stats-tabs {
+    padding: 0 16px;
+  }
+
+  .stat-cards {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 12px 8px;
+  }
+
+  .stat-number {
+    font-size: 22px;
+  }
+
+  .bar-label {
+    width: 70px;
+    font-size: 12px;
+  }
 }
 </style>

@@ -30,6 +30,7 @@ export function useTouchDrag(options: UseTouchDragOptions) {
   function onTouchStart(e: TouchEvent) {
     const el = cardRef.value
     if (!el) return
+    if (e.touches.length !== 1) return
     currentId = el.dataset.linkId || ''
     if (!currentId) return
 
@@ -66,6 +67,7 @@ export function useTouchDrag(options: UseTouchDragOptions) {
 
   function onTouchMove(e: TouchEvent) {
     if (!isDragging) return
+    if (e.touches.length !== 1) return
     e.preventDefault()
 
     const touch = e.touches[0]

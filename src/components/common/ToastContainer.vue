@@ -5,10 +5,10 @@ const { toasts, removeToast } = useToast()
 
 // 可爱的 SVG 图标
 const iconMap: Record<string, string> = {
-  success: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
-  error: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
-  warning: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
-  info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#19c8b9" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  success: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
+  error: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+  warning: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
 }
 </script>
 
@@ -34,7 +34,7 @@ const iconMap: Record<string, string> = {
 <style scoped>
 .toast-container {
   position: fixed;
-  top: 24px;
+  top: calc(24px + env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 99999;
@@ -72,43 +72,47 @@ const iconMap: Record<string, string> = {
 }
 
 .toast-item.success {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(34, 197, 94, 0.04) 100%);
-  box-shadow: 0 4px 20px rgba(34, 197, 94, 0.15), 0 0 0 1px rgba(34, 197, 94, 0.1);
+  background: linear-gradient(135deg, rgba(111, 186, 44, 0.12) 0%, rgba(111, 186, 44, 0.04) 100%);
+  box-shadow: 0 4px 20px rgba(111, 186, 44, 0.15), 0 0 0 1px rgba(111, 186, 44, 0.1);
+  color: var(--success);
 }
 
 .toast-item.error {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(239, 68, 68, 0.04) 100%);
-  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15), 0 0 0 1px rgba(239, 68, 68, 0.1);
+  background: linear-gradient(135deg, rgba(224, 90, 90, 0.12) 0%, rgba(224, 90, 90, 0.04) 100%);
+  box-shadow: 0 4px 20px rgba(224, 90, 90, 0.15), 0 0 0 1px rgba(224, 90, 90, 0.1);
+  color: var(--error);
 }
 
 .toast-item.warning {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.04) 100%);
-  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.15), 0 0 0 1px rgba(245, 158, 11, 0.1);
+  background: linear-gradient(135deg, rgba(245, 195, 28, 0.12) 0%, rgba(245, 195, 28, 0.04) 100%);
+  box-shadow: 0 4px 20px rgba(245, 195, 28, 0.15), 0 0 0 1px rgba(245, 195, 28, 0.1);
+  color: var(--warning);
 }
 
 .toast-item.info {
   background: linear-gradient(135deg, rgba(25, 200, 185, 0.12) 0%, rgba(25, 200, 185, 0.04) 100%);
   box-shadow: 0 4px 20px rgba(25, 200, 185, 0.15), 0 0 0 1px rgba(25, 200, 185, 0.1);
+  color: var(--primary);
 }
 
 /* 暗色模式 */
-html.dark .toast-item {
+:root.dark .toast-item {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-html.dark .toast-item.success {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.08) 100%);
+:root.dark .toast-item.success {
+  background: linear-gradient(135deg, rgba(111, 186, 44, 0.2) 0%, rgba(111, 186, 44, 0.08) 100%);
 }
 
-html.dark .toast-item.error {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.08) 100%);
+:root.dark .toast-item.error {
+  background: linear-gradient(135deg, rgba(224, 90, 90, 0.2) 0%, rgba(224, 90, 90, 0.08) 100%);
 }
 
-html.dark .toast-item.warning {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.08) 100%);
+:root.dark .toast-item.warning {
+  background: linear-gradient(135deg, rgba(245, 195, 28, 0.2) 0%, rgba(245, 195, 28, 0.08) 100%);
 }
 
-html.dark .toast-item.info {
+:root.dark .toast-item.info {
   background: linear-gradient(135deg, rgba(25, 200, 185, 0.2) 0%, rgba(25, 200, 185, 0.08) 100%);
 }
 
@@ -123,7 +127,7 @@ html.dark .toast-item.info {
   flex-shrink: 0;
 }
 
-html.dark .toast-icon {
+:root.dark .toast-icon {
   background: rgba(255, 255, 255, 0.1);
 }
 

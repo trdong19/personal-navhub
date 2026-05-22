@@ -174,13 +174,13 @@ function confirm() {
 }
 
 .confirm-dialog-confirm.danger {
-  background: #ef4444;
+  background: var(--error);
   box-shadow: 0 5px 0 0 var(--error-active);
 }
 
 .confirm-dialog-confirm.danger:hover:not(:disabled) {
   opacity: 0.9;
-  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.35);
+  box-shadow: 0 3px 10px rgba(224, 90, 90, 0.35);
 }
 
 /* 进出动画 */

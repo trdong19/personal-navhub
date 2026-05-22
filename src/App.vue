@@ -822,7 +822,7 @@ async function handleRefreshIcons() {
       <p style="margin: 0 0 12px; color: var(--text-secondary); font-size: 14px;">
         确定要删除选中的 <strong style="color: var(--text);">{{ navStore.selectedLinkIds.size }}</strong> 个链接吗？
       </p>
-      <p style="margin: 0; color: #ef4444; font-size: 13px; background: rgba(239, 68, 68, 0.1); padding: 8px 12px; border-radius: 6px;">
+      <p style="margin: 0; color: var(--error); font-size: 13px; background: rgba(224, 90, 90, 0.1); padding: 8px 12px; border-radius: 6px;">
         ⚠️ 删除后可撤回，但刷新页面后撤回功能将失效
       </p>
     </ConfirmDialog>
@@ -855,8 +855,8 @@ async function handleRefreshIcons() {
 
 .floating-controls {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  right: calc(24px + env(safe-area-inset-right, 0px));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -989,9 +989,14 @@ async function handleRefreshIcons() {
   color: var(--text);
 }
 
+.user-dropdown .menu-item:active {
+  background: var(--bg-secondary);
+  transform: scale(0.98);
+}
+
 .user-dropdown .menu-item-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(224, 90, 90, 0.1);
+  color: var(--error);
 }
 
 .user-dropdown .menu-divider {
@@ -1250,9 +1255,9 @@ async function handleRefreshIcons() {
 }
 
 .batch-btn.delete:hover:not(:disabled) {
-  border-color: #ef4444;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.05);
+  border-color: var(--error);
+  color: var(--error);
+  background: rgba(224, 90, 90, 0.05);
 }
 
 .batch-btn.cancel {
@@ -1474,7 +1479,7 @@ async function handleRefreshIcons() {
 }
 
 .filter-clear-tags:hover {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .filter-pop-enter-active {
@@ -1547,18 +1552,18 @@ async function handleRefreshIcons() {
   }
 
   .float-btn {
-    width: 30px;
-    height: 30px;
+    width: 36px;
+    height: 36px;
   }
 
   .float-btn svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
   }
 
   .fab-main {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
   }
 
   .fab-main svg {

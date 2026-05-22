@@ -145,7 +145,7 @@ function handleBackdropClick() {
   z-index: 4999;
   background: var(--bg-card);
   border: none;
-  border-radius: 16px;
+  border-radius: 24px;
   padding: 6px;
   min-width: 170px;
   box-shadow: 0 8px 32px rgba(61, 52, 40, 0.15);
@@ -171,12 +171,17 @@ function handleBackdropClick() {
   background: var(--bg-hover);
 }
 
+.ctx-item:active {
+  background: var(--bg-secondary);
+  transform: scale(0.98);
+}
+
 .ctx-danger {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .ctx-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(224, 90, 90, 0.1);
 }
 
 .ctx-icon {

@@ -485,6 +485,7 @@ onUnmounted(() => {
   border-radius: 18px;
   color: var(--primary);
   cursor: grab;
+  touch-action: none;
 }
 
 @media (max-width: 768px) {

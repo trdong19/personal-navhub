@@ -147,7 +147,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="search-overlay" role="dialog" aria-modal="true" aria-label="搜索" @mousedown.self="emit('close')">
+  <div class="search-overlay" role="dialog" aria-modal="true" aria-label="搜索" @click.self="emit('close')">
     <div class="search-modal">
       <div class="search-header">
         <div class="search-input-wrapper">
@@ -226,14 +226,14 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 20vh;
+  padding-top: max(20vh, 20dvh);
 }
 
 .search-modal {
   width: 90%;
   max-width: 600px;
   background: var(--bg-card);
-  border-radius: 16px;
+  border-radius: 24px;
   box-shadow: 0 20px 60px rgba(61, 52, 40, 0.25);
   overflow: hidden;
   animation: slideIn 0.2s ease-out;
@@ -403,5 +403,16 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-muted);
   margin-bottom: 8px;
+}
+
+@media (max-width: 480px) {
+  .search-overlay {
+    padding-top: max(10vh, 10dvh);
+  }
+
+  .search-modal {
+    width: 95%;
+    border-radius: 20px;
+  }
 }
 </style>

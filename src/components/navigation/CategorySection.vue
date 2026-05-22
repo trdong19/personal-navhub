@@ -1311,6 +1311,7 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
     color: var(--text-muted);
     opacity: 1;
     cursor: grab;
+    touch-action: none;
   }
 }.category-header:hover .category-actions,
 .sub-category-header:hover .category-actions {
@@ -1335,8 +1336,8 @@ const ctxLink = computed(() => navStore.links.find(l => l.id === ctxMenu.value.l
 }
 
 .cat-action-delete:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(224, 90, 90, 0.1);
+  color: var(--error);
 }
 
 .add-link-btn:hover {
