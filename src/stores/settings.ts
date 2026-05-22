@@ -169,8 +169,6 @@ export const useSettingsStore = defineStore('settings', () => {
       settings.value.theme.backgroundImage = url
       try { await deleteBgImage() } catch {}
     }
-    applyTheme()
-    saveAndSync()
     if (url && url.startsWith('data:')) {
       incrementalSync('push-resources', { resources: { bg: url } }).catch(() => {})
     } else if (url === '') {

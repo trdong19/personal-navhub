@@ -392,6 +392,7 @@ onUnmounted(() => {
 
 function handleFileManagerSelect(dataUrl: string) {
   settingsStore.setBackgroundImage(dataUrl)
+  settingsStore.applyTheme()
 }
 
 function handleFileManagerDelete(id: string) {
@@ -403,6 +404,7 @@ function handleFileManagerDelete(id: string) {
   }
   if (id === 'bg_image') {
     settingsStore.setBackgroundImage('')
+    settingsStore.applyTheme()
   }
   auth.incrementalSync('delete-resource', { resourceId: 'wallpaper:' + id }).catch(() => {})
 }
@@ -657,6 +659,7 @@ async function handleLocalImageUpload(event: Event) {
       dataUrl = await compressImage(dataUrl, 2560, 0.85)
     }
     settingsStore.setBackgroundImage(dataUrl)
+    settingsStore.applyTheme()
   }
   reader.readAsDataURL(file)
 }
@@ -862,7 +865,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 class="bg-url-input"
                 placeholder="输入图片 URL 地址..."
                 :value="effectiveBgImage.startsWith('data:') ? '' : effectiveBgImage"
-                @input="settingsStore.setBackgroundImage(($event.target as HTMLInputElement).value)"
+                @input="settingsStore.setBackgroundImage(($event.target as HTMLInputElement).value); settingsStore.applyTheme()"
               />
               <label class="bg-upload-btn" title="上传本地图片">
                 📁
@@ -872,7 +875,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 v-if="effectiveBgImage"
                 class="bg-clear-btn"
                 title="清除背景图"
-                @click="settingsStore.setBackgroundImage('')"
+                @click="settingsStore.setBackgroundImage(''); settingsStore.applyTheme()"
               >
                 ✕
               </button>
@@ -885,7 +888,7 @@ function compressImage(dataUrl: string, maxDim: number, quality: number): Promis
                 :class="{ active: effectiveBgImage === bg.url }"
                 :style="{ backgroundImage: `url(${bg.url})` }"
                 :title="bg.name"
-                @click="settingsStore.setBackgroundImage(bg.url)"
+                @click="settingsStore.setBackgroundImage(bg.url); settingsStore.applyTheme()"
               />
             </div>
           </div>
