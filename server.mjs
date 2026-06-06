@@ -437,14 +437,17 @@ const server = http.createServer(async (req, res) => {
       if (!isValidToken(req)) return json(res, { error: '登录已过期' }, 401)
 
       const link = body.link
-      if (!link || !link.title || !link.urls?.extranet) {
+      if (!link || !link.title || !link.urls || (!link.urls.extranet && !link.urls.intranet && !link.urls.tunnel)) {
         return json(res, { error: '缺少链接数据' }, 400)
       }
 
       // 检查重复
-      const dup = appData.links.find(
-        (l) => l.urls?.extranet === link.urls.extranet || l.urls?.intranet === link.urls.extranet
-      )
+      const dup = appData.links.find((l) => {
+        if (link.urls.extranet && (l.urls?.extranet === link.urls.extranet || l.urls?.intranet === link.urls.extranet)) return true
+        if (link.urls.intranet && (l.urls?.extranet === link.urls.intranet || l.urls?.intranet === link.urls.intranet)) return true
+        if (link.urls.tunnel && (l.urls?.extranet === link.urls.tunnel || l.urls?.intranet === link.urls.tunnel || l.urls?.tunnel === link.urls.tunnel)) return true
+        return false
+      })
       if (dup) return json(res, { error: '该链接已存在' }, 409)
 
       // 提取 data URL 图标存为资源
