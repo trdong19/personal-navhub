@@ -309,7 +309,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       try { body = await context.request.json() } catch { return json({ error: '无效请求' }, 400) }
 
       const link = body.link
-      if (!link || !link.title || !(link.urls as Record<string, unknown>)?.extranet) {
+      const linkUrls = link.urls as Record<string, unknown> | undefined
+      if (!link || !link.title || !linkUrls || (!linkUrls.extranet && !linkUrls.intranet && !linkUrls.tunnel)) {
         return json({ error: '缺少链接数据' }, 400)
       }
 
@@ -317,9 +318,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const data: SyncData = raw ? JSON.parse(raw) : { settings: null, links: [], categories: [], accessRecords: [], updatedAt: 0, version: 0 }
 
       // 检查重复
-      const dup = data.links.find(
-        (l: any) => l.urls?.extranet === (link.urls as any).extranet || l.urls?.intranet === (link.urls as any).extranet
-      )
+      const dup = data.links.find((l: any) => {
+        if (linkUrls.extranet && (l.urls?.extranet === linkUrls.extranet || l.urls?.intranet === linkUrls.extranet)) return true
+        if (linkUrls.intranet && (l.urls?.extranet === linkUrls.intranet || l.urls?.intranet === linkUrls.intranet)) return true
+        if (linkUrls.tunnel && (l.urls?.extranet === linkUrls.tunnel || l.urls?.intranet === linkUrls.tunnel || l.urls?.tunnel === linkUrls.tunnel)) return true
+        return false
+      })
       if (dup) return json({ error: '该链接已存在' }, 409)
 
       // 提取 data URL 图标存为资源
