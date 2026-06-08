@@ -286,12 +286,12 @@ async function syncInBackground() {
     } else if (result && result.changes.length > 0) {
       const resolved = await resolveResources(result.changes)
       applyChanges(resolved)
-      // 设置或资源变更需要 pull 同步壁纸等资源
-      if (resolved.some(c => c.type === 'settings' || c.type === 'resource')) {
-        await auth.pull()
-        settingsStore.reloadFromStorage()
-      }
     }
+    // 始终拉取完整数据确保 navStore 和 localStorage 与服务器一致
+    // 避免 applyChanges 失败或遗漏导致数据不同步
+    await auth.pull()
+    navStore.reloadFromStorage()
+    settingsStore.reloadFromStorage()
   }
 }
 
@@ -320,7 +320,7 @@ function handleTouchEndCleanup() {
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible' && auth.token.value) {
     // 页面重新可见时：增量拉取服务端变更
-    auth.checkServerVersion().then(serverVersion => {
+    auth.checkServerVersion().then(async serverVersion => {
       if (serverVersion === null) return
       let cachedVersion = parseInt(localStorage.getItem('nav_cached_server_version') || '0')
       if (cachedVersion > serverVersion) {
@@ -328,18 +328,17 @@ function handleVisibilityChange() {
         cachedVersion = serverVersion
       }
       if (serverVersion > cachedVersion) {
-        auth.pullChanges().then(async result => {
-          if (result?.fullSync) {
-            navStore.reloadFromStorage()
-          } else if (result && result.changes.length > 0) {
-            const resolved = await resolveResources(result.changes)
-            applyChanges(resolved)
-            if (resolved.some(c => c.type === 'settings' || c.type === 'resource')) {
-              await auth.pull()
-              settingsStore.reloadFromStorage()
-            }
-          }
-        })
+        const result = await auth.pullChanges()
+        if (result?.fullSync) {
+          navStore.reloadFromStorage()
+        } else if (result && result.changes.length > 0) {
+          const resolved = await resolveResources(result.changes)
+          applyChanges(resolved)
+        }
+        // 始终拉取完整数据确保同步
+        await auth.pull()
+        navStore.reloadFromStorage()
+        settingsStore.reloadFromStorage()
       }
     })
   }
