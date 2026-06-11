@@ -168,14 +168,18 @@ export function useAuth() {
       const localMetaRaw = localStorage.getItem(PULL_RES_HASH_KEY)
       const localMeta: Record<string, string> = localMetaRaw ? JSON.parse(localMetaRaw) : {}
 
-      // 分离关键资源（背景图+壁纸）和非关键资源（缓存图标）
+      // 只拉关键资源（背景图+壁纸）和本地缺失的图标
       const criticalIds: string[] = []
       const iconIds: string[] = []
       for (const [resId, serverHash] of Object.entries(resourcesMeta)) {
-        if (localMeta[resId] !== serverHash || !localRes[resId]) {
-          if (resId === 'bg' || resId.startsWith('wallpaper:')) {
+        if (resId === 'bg' || resId.startsWith('wallpaper:')) {
+          // 关键资源：hash 变了或本地没有就拉
+          if (localMeta[resId] !== serverHash || !localRes[resId]) {
             criticalIds.push(resId)
-          } else {
+          }
+        } else {
+          // 图标：本地有就不拉，没有才拉
+          if (!localRes[resId]) {
             iconIds.push(resId)
           }
         }
@@ -208,18 +212,19 @@ export function useAuth() {
         fetchedResources = await fetchBatch(criticalIds)
       }
 
-      // 图标后台拉取，不阻塞 UI
+      // 本地缺失的图标也同步拉取（新设备首次登录）
       if (iconIds.length > 0) {
-        fetchBatch(iconIds).then(iconRes => {
-          const mergedLocalRes: Record<string, string> = JSON.parse(localStorage.getItem('nav_cached_resources') || '{}')
-          Object.assign(mergedLocalRes, iconRes)
-          safeSetItem('nav_cached_resources', JSON.stringify(mergedLocalRes))
-          const mergedMeta: Record<string, string> = JSON.parse(localStorage.getItem(PULL_RES_HASH_KEY) || '{}')
-          for (const id of Object.keys(iconRes)) {
-            if (resourcesMeta[id]) mergedMeta[id] = resourcesMeta[id]
-          }
-          safeSetItem(PULL_RES_HASH_KEY, JSON.stringify(mergedMeta))
-        }).catch(() => {})
+        const iconRes = await fetchBatch(iconIds)
+        Object.assign(fetchedResources, iconRes)
+        // 更新本地缓存
+        const mergedLocalRes: Record<string, string> = JSON.parse(localStorage.getItem('nav_cached_resources') || '{}')
+        Object.assign(mergedLocalRes, iconRes)
+        safeSetItem('nav_cached_resources', JSON.stringify(mergedLocalRes))
+        const mergedMeta: Record<string, string> = JSON.parse(localStorage.getItem(PULL_RES_HASH_KEY) || '{}')
+        for (const id of Object.keys(iconRes)) {
+          if (resourcesMeta[id]) mergedMeta[id] = resourcesMeta[id]
+        }
+        safeSetItem(PULL_RES_HASH_KEY, JSON.stringify(mergedMeta))
       }
 
       const resources: Record<string, string> = {}
@@ -261,6 +266,21 @@ export function useAuth() {
         storageSet('userSettings', result.data.settings)
       }
       if (result.data.links) {
+        // 合并本地已有的 data URL 图标，避免 pull 覆盖
+        const localLinksRaw = localStorage.getItem('navLinks')
+        const localLinks: Record<string, string> = {}
+        if (localLinksRaw) {
+          for (const l of JSON.parse(localLinksRaw)) {
+            if (l.iconUrl && typeof l.iconUrl === 'string' && l.iconUrl.startsWith('data:')) {
+              localLinks[l.id] = l.iconUrl
+            }
+          }
+        }
+        for (const link of result.data.links) {
+          if (!link.iconUrl && localLinks[link.id]) {
+            link.iconUrl = localLinks[link.id]
+          }
+        }
         storageSet('navLinks', result.data.links)
       }
       if (result.data.categories) {
